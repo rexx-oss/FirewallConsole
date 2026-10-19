@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows;
 using FirewallConsole.Storage;
+using Application = System.Windows.Application;
 
 namespace FirewallConsole;
 
@@ -14,8 +15,8 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
             var ex = args.ExceptionObject as Exception;
-            MessageBox.Show($"Fatal Application Error:\n{ex?.Message}\n\nStack:\n{ex?.StackTrace}", 
-                            "Fatal Exception", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show($"Fatal Application Error:\n{ex?.Message}\n\nStack:\n{ex?.StackTrace}", 
+                                           "Fatal Exception", MessageBoxButton.OK, MessageBoxImage.Error);
         };
 
         base.OnStartup(e);
