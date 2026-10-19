@@ -8,44 +8,13 @@
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
-        StateChanged="Window_StateChanged"
         Closing="Window_Closing"
+        FontFamily="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
         Background="{DynamicResource BgBrush}">
 
     <Window.Resources>
-        <!-- Standard Outlined/Elevated Button Style -->
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource ButtonBgBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="12,6"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="6" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.9"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.75"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style TargetType="TabItem">
+            <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -88,14 +57,14 @@
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <CheckBox x:Name="ChkStartMinimized" Content="Start Minimized" Checked="ChkStartMinimized_Changed" Unchecked="ChkStartMinimized_Changed" 
-                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,14,0"/>
-                <Button x:Name="ModeToggleButton" Content="🛡 Mode: Whitelist (Strict)" Click="ModeToggle_Click" Margin="0,0,8,0"/>
-                <Button Content="🌓 Theme" Click="ThemeToggle_Click"/>
+                <CheckBox x:Name="ChkStartOnLogin" Content="Start on Login" Checked="ChkStartOnLogin_Changed" Unchecked="ChkStartOnLogin_Changed" 
+                          VerticalAlignment="Center" Margin="0,0,14,0"/>
+                <Button x:Name="ModeToggleButton" Content="Mode: Whitelist (Strict)" Click="ModeToggle_Click" Margin="0,0,8,0"/>
+                <Button Content="Theme" Click="ThemeToggle_Click"/>
             </StackPanel>
         </DockPanel>
 
-        <!-- Action Bar with Distinct, Colored Buttons -->
+        <!-- Action Bar -->
         <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -108,19 +77,19 @@
                          BorderBrush="{DynamicResource BorderBrush}" TextChanged="SearchBox_TextChanged"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
-                    <Button Content="➕ New Rule" Click="NewRule_Click" Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="✏ Edit Selected" Click="EditSelected_Click" Margin="0,0,6,0"/>
-                    <Button Content="✔ Approve" Click="Approve_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="✖ Revoke" Click="Revoke_Click" Background="{DynamicResource WarningBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="⚡ Enable/Disable" Click="ToggleEnable_Click" Margin="0,0,6,0"/>
-                    <Button Content="🔄 Allow/Block" Click="ToggleAction_Click" Margin="0,0,6,0"/>
-                    <Button Content="🗑 Delete" Click="Delete_Click" Background="{DynamicResource DangerBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="🔃 Refresh" Click="Refresh_Click"/>
+                    <Button Content="New Rule" Click="NewRule_Click" Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
+                    <Button Content="Edit Selected" Click="EditSelected_Click" Margin="0,0,6,0"/>
+                    <Button Content="Approve" Click="Approve_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
+                    <Button Content="Revoke" Click="Revoke_Click" Background="{DynamicResource WarningBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
+                    <Button Content="Enable/Disable" Click="ToggleEnable_Click" Margin="0,0,6,0"/>
+                    <Button Content="Allow/Block" Click="ToggleAction_Click" Margin="0,0,6,0"/>
+                    <Button Content="Delete" Click="Delete_Click" Background="{DynamicResource DangerBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
+                    <Button Content="Refresh" Click="Refresh_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Tabs with Virtualization Enabled to Minimize RAM -->
+        <!-- Tabs -->
         <TabControl x:Name="RulesTabControl" Grid.Row="2" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
             <!-- Outbound Rules -->
             <TabItem Header="Outbound Rules">
@@ -184,7 +153,7 @@
 
                     <DockPanel Grid.Row="0" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="BtnToggleLogging" Content="▶ Start Logging" Click="ToggleLogging_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
+                            <Button x:Name="BtnToggleLogging" Content="Start Logging" Click="ToggleLogging_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
                             <Button Content="Clear Log" Click="ClearBlockedLog_Click"/>
                         </StackPanel>
                         <TextBlock x:Name="LoggingStatusText" Text="Logging stopped. Double-click any blocked application to create a rule." 
