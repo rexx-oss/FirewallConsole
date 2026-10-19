@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -96,7 +95,7 @@ public partial class MainWindow : Window
 
         try
         {
-            Bitmap? bmp = null;
+            System.Drawing.Bitmap? bmp = null;
             var resUri = new Uri("pack://application:,,,/icon.png", UriKind.Absolute);
             var streamInfo = Application.GetResourceStream(resUri);
 
@@ -105,7 +104,7 @@ public partial class MainWindow : Window
                 using var mem = new MemoryStream();
                 streamInfo.Stream.CopyTo(mem);
                 mem.Position = 0;
-                bmp = new Bitmap(mem);
+                bmp = new System.Drawing.Bitmap(mem);
                 mem.Position = 0;
                 this.Icon = BitmapFrame.Create(mem, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
             }
@@ -114,7 +113,7 @@ public partial class MainWindow : Window
                 var loosePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
                 if (File.Exists(loosePath))
                 {
-                    bmp = new Bitmap(loosePath);
+                    bmp = new System.Drawing.Bitmap(loosePath);
                     this.Icon = new BitmapImage(new Uri(loosePath, UriKind.Absolute));
                 }
             }
@@ -122,20 +121,20 @@ public partial class MainWindow : Window
             if (bmp != null)
             {
                 IntPtr hIcon = bmp.GetHicon();
-                _notifyIcon.Icon = Icon.FromHandle(hIcon);
+                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
             }
             else
             {
-                _notifyIcon.Icon = SystemIcons.Application;
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
             }
         }
         catch
         {
-            _notifyIcon.Icon = SystemIcons.Application;
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
         }
 
         _trayMenu = new WinForms.ContextMenuStrip();
-        _trayMenu.Font = new Font("Segoe UI", 9f);
+        _trayMenu.Font = new System.Drawing.Font("Segoe UI", 9f);
 
         var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
         _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText(), null, (s, e) => Dispatcher.Invoke(ToggleMode));
@@ -555,6 +554,7 @@ public partial class MainWindow : Window
 
 /// <summary>
 /// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes.
+/// Fully qualifies all GDI+ types to eliminate ambiguous collisions with WPF types.
 /// </summary>
 public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
 {
@@ -568,32 +568,32 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
     protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
     {
         var g = e.Graphics;
-        var rect = new Rectangle(Point.Empty, e.Item.Size);
+        var rect = new System.Drawing.Rectangle(System.Drawing.Point.Empty, e.Item.Size);
 
         if (e.Item.Selected)
         {
-            var hoverColor = _isDark ? Color.FromArgb(42, 42, 48) : Color.FromArgb(229, 231, 235);
-            using var b = new SolidBrush(hoverColor);
+            var hoverColor = _isDark ? System.Drawing.Color.FromArgb(42, 42, 48) : System.Drawing.Color.FromArgb(229, 231, 235);
+            using var b = new System.Drawing.SolidBrush(hoverColor);
             g.FillRectangle(b, rect);
         }
         else
         {
-            var bgColor = _isDark ? Color.FromArgb(30, 30, 34) : Color.FromArgb(255, 255, 255);
-            using var b = new SolidBrush(bgColor);
+            var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+            using var b = new System.Drawing.SolidBrush(bgColor);
             g.FillRectangle(b, rect);
         }
     }
 
     protected override void OnRenderItemText(WinForms.ToolStripItemTextRenderEventArgs e)
     {
-        e.TextColor = _isDark ? Color.FromArgb(244, 244, 246) : Color.FromArgb(17, 24, 39);
+        e.TextColor = _isDark ? System.Drawing.Color.FromArgb(244, 244, 246) : System.Drawing.Color.FromArgb(17, 24, 39);
         base.OnRenderItemText(e);
     }
 
     protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
     {
-        var sepColor = _isDark ? Color.FromArgb(51, 51, 56) : Color.FromArgb(209, 213, 219);
-        using var pen = new Pen(sepColor);
+        var sepColor = _isDark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
+        using var pen = new System.Drawing.Pen(sepColor);
         int y = e.Item.Height / 2;
         e.Graphics.DrawLine(pen, 4, y, e.Item.Width - 4, y);
     }
@@ -603,7 +603,7 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
         private readonly bool _dark;
         public CustomColorTable(bool dark) => _dark = dark;
 
-        public override Color ToolStripDropDownBackground => _dark ? Color.FromArgb(30, 30, 34) : Color.FromArgb(255, 255, 255);
-        public override Color MenuBorder => _dark ? Color.FromArgb(51, 51, 56) : Color.FromArgb(209, 213, 219);
+        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
     }
 }
