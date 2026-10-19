@@ -35,7 +35,7 @@ public class FirewallEngine
                grouping.Contains("Core Networking", StringComparison.OrdinalIgnoreCase);
     }
 
-    private string GetSectionForDirection(string direction) =>
+    private static string GetSectionForDirection(string direction) =>
         direction.Equals("Inbound", StringComparison.OrdinalIgnoreCase) ? "InboundApproved" : "OutboundApproved";
 
     private static bool RuleMatches(dynamic rule, FirewallRuleModel target)
@@ -253,36 +253,18 @@ public class FirewallEngine
 
     public void DeleteRule(FirewallRuleModel target)
     {
-        dynamic policy = GetPolicy();
-        dynamic rules = policy.Rules;
-
-        // Temporarily rename non-target rules that share the exact same Name
-        var renamedRules = new List<(dynamic rule, string originalName)>();
-
-        foreach (dynamic rule in rules)
-        {
-            if (string.Equals((string)(rule.Name ?? ""), target.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                if (!RuleMatches(rule, target))
-                {
-                    string tempName = Guid.NewGuid().ToString("N");
-                    rule.Name = tempName;
-                    renamedRules.Add((rule, target.Name));
-                }
-            }
-        }
-
         try
         {
+            dynamic policy = GetPolicy();
             policy.Rules.Remove(target.Name);
         }
-        finally
+        catch
         {
-            foreach (var item in renamedRules)
-            {
-                item.rule.Name = item.originalName;
-            }
+            // Ignore if rule was already removed
         }
 
         string section = GetSectionForDirection(target.Direction);
-        _approvedRul
+        _approvedRulesIni.RemoveKey(section, target.Name);
+        _approvedRulesIni.Save(_rulesFilePath);
+    }
+}
