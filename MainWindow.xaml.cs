@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using FirewallConsole.Firewall;
@@ -19,22 +20,32 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
     }
 
-    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        var enforceStartup = App.Settings.GetValue("Policy", "EnforceOnStartup", "true");
-        if (bool.TryParse(enforceStartup, out bool enforce) && enforce)
+        try
         {
-            var (disabled, retained) = _engine.EnforceLockdownPolicy();
-            StatusLabel.Text = $"Startup Enforce: Disabled {disabled} unapproved rules, retained {retained}.";
-        }
+            var enforceStartup = App.Settings.GetValue("Policy", "EnforceOnStartup", "true");
+            if (bool.TryParse(enforceStartup, out bool enforce) && enforce)
+            {
+                StatusLabel.Text = "Applying startup policy...";
+                var (disabled, retained) = await Task.Run(() => _engine.EnforceLockdownPolicy());
+                StatusLabel.Text = $"Startup Enforce: Disabled {disabled} rules, retained {retained}.";
+            }
 
-        ReloadRules();
+            await ReloadRulesAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Startup initialization error: {ex.Message}\n\nMake sure to run as Administrator.", 
+                            "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusLabel.Text = "Failed to communicate with Windows Firewall.";
+        }
     }
 
-    private void ReloadRules()
+    private async Task ReloadRulesAsync()
     {
         StatusLabel.Text = "Querying Windows Firewall COM interface...";
-        _allRules = _engine.GetAllRules();
+        _allRules = await Task.Run(() => _engine.GetAllRules());
         ApplyFilter();
         StatsLabel.Text = $"Total Rules: {_allRules.Count}";
         StatusLabel.Text = "Rules loaded and synchronized.";
@@ -58,7 +69,7 @@ public partial class MainWindow : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
-    private void Refresh_Click(object sender, RoutedEventArgs e) => ReloadRules();
+    private async void Refresh_Click(object sender, RoutedEventArgs e) => await ReloadRulesAsync();
 
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
@@ -67,38 +78,39 @@ public partial class MainWindow : Window
         App.SetTheme(targetTheme);
     }
 
-    private void EnforceLockdown_Click(object sender, RoutedEventArgs e)
+    private async void EnforceLockdown_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            "This will immediately DISABLE all enabled rules that are NOT approved or part of 'Core Networking'. Proceed?",
+            "This will immediately DISABLE all rules that are NOT approved or part of 'Core Networking'. Proceed?",
             "Confirm Firewall Lockdown",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
         if (result == MessageBoxResult.Yes)
         {
-            var (disabled, retained) = _engine.EnforceLockdownPolicy();
-            ReloadRules();
-            MessageBox.Show($"Lockdown applied successfully!\n\nDisabled unapproved rules: {disabled}\nRetained valid rules: {retained}",
-                "Lockdown Finished", MessageBoxButton.OK, MessageBoxImage.Information);
+            StatusLabel.Text = "Enforcing lockdown...";
+            var (disabled, retained) = await Task.Run(() => _engine.EnforceLockdownPolicy());
+            await ReloadRulesAsync();
+            MessageBox.Show($"Lockdown finished!\n\nDisabled rules: {disabled}\nRetained valid rules: {retained}",
+                "Lockdown Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
-    private void Approve_Click(object sender, RoutedEventArgs e)
+    private async void Approve_Click(object sender, RoutedEventArgs e)
     {
         if (RulesGrid.SelectedItem is FirewallRuleModel selected)
         {
-            _engine.ApproveRule(selected.Name);
-            ReloadRules();
+            await Task.Run(() => _engine.ApproveRule(selected.Name));
+            await ReloadRulesAsync();
         }
     }
 
-    private void Revoke_Click(object sender, RoutedEventArgs e)
+    private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
         if (RulesGrid.SelectedItem is FirewallRuleModel selected)
         {
-            _engine.RevokeRule(selected.Name);
-            ReloadRules();
+            await Task.Run(() => _engine.RevokeRule(selected.Name));
+            await ReloadRulesAsync();
         }
     }
 }
