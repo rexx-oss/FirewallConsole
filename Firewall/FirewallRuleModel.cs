@@ -1,4 +1,4 @@
-namespace WinFirewallConsole.Firewall;
+namespace FirewallConsole.Firewall;
 
 public class FirewallRuleModel
 {
