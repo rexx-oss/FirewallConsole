@@ -86,4 +86,9 @@ public class IniConfig
         if (_data.TryGetValue(section, out var sec))
             sec.Remove(key);
     }
+
+    public void RemoveSection(string section)
+    {
+        _data.Remove(section);
+    }
 }
