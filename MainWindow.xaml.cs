@@ -142,7 +142,7 @@ public partial class MainWindow : Window
             bool startMinimized = bool.TryParse(App.Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
             ChkStartMinimized.IsChecked = startMinimized;
 
-            StatusLabel.Text = "Synchronizing backup rules from firecon.ini...";
+            StatusLabel.Text = "Synchronizing rules via unique IDs...";
             int restored = await Task.Run(() => _engine.SyncStoredRulesFromConfig());
 
             StatusLabel.Text = "Applying configured firewall policy...";
@@ -273,6 +273,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BlockedGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (BlockedGrid.SelectedItem is BlockedConnectionModel blocked)
+        {
+            if (!string.IsNullOrWhiteSpace(blocked.ApplicationName) && blocked.ApplicationName != "Unknown")
+            {
+                OpenRuleDialog(blocked.ApplicationName, blocked.Direction, blocked.Protocol);
+            }
+        }
+    }
+
     private async void OpenEditRuleDialog(FirewallRuleModel ruleToEdit)
     {
         var dialog = new RuleDialog(ruleToEdit) { Owner = this };
@@ -285,9 +296,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OpenRuleDialog(string? prefilledPath = null)
+    private async void OpenRuleDialog(string? prefilledPath = null, string? direction = null, string? protocol = null)
     {
-        var dialog = new RuleDialog(prefilledPath) { Owner = this };
+        var dialog = new RuleDialog(prefilledPath, direction, protocol) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.CreatedRule != null)
         {
             StatusLabel.Text = $"Creating rule '{dialog.CreatedRule.Name}'...";
@@ -404,7 +415,7 @@ public partial class MainWindow : Window
             _monitor.Start();
             BtnToggleLogging.Content = "⏹ Stop Logging";
             BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("DangerBrush");
-            LoggingStatusText.Text = "Active: Monitoring blocked connection events in real time...";
+            LoggingStatusText.Text = "Active: Monitoring blocked connection events. Double-click row to create rule.";
         }
     }
 
