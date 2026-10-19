@@ -11,6 +11,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        {
+            var ex = args.ExceptionObject as Exception;
+            MessageBox.Show($"Fatal Application Error:\n{ex?.Message}\n\nStack:\n{ex?.StackTrace}", 
+                            "Fatal Exception", MessageBoxButton.OK, MessageBoxImage.Error);
+        };
+
         base.OnStartup(e);
 
         var settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
