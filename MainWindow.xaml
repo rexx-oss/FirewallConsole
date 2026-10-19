@@ -106,11 +106,11 @@
             </Grid>
         </Border>
 
-        <!-- Inbound / Outbound Tabs -->
-        <TabControl x:Name="RulesTabControl" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
-            <TabItem Header="Inbound Rules">
+        <!-- Tabs: Outbound Rules First, Inbound Rules Second -->
+        <TabControl x:Name="RulesTabControl" Grid.Row="2" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
+            <TabItem Header="Outbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
-                    <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                    <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Extended" SelectionUnit="FullRow"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
@@ -129,9 +129,9 @@
                 </Border>
             </TabItem>
 
-            <TabItem Header="Outbound Rules">
+            <TabItem Header="Inbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
-                    <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                    <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Extended" SelectionUnit="FullRow"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
