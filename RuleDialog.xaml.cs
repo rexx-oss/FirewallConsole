@@ -9,15 +9,49 @@ namespace FirewallConsole;
 public partial class RuleDialog : Window
 {
     public FirewallRuleModel? CreatedRule { get; private set; }
+    private readonly bool _isEditMode;
 
     public RuleDialog(string? prefilledPath = null)
     {
         InitializeComponent();
-
         if (!string.IsNullOrWhiteSpace(prefilledPath))
         {
             TxtAppPath.Text = prefilledPath;
             TxtName.Text = Path.GetFileNameWithoutExtension(prefilledPath);
+        }
+    }
+
+    public RuleDialog(FirewallRuleModel existingRule)
+    {
+        InitializeComponent();
+        _isEditMode = true;
+
+        DialogTitle.Text = $"Edit Rule: {existingRule.Name}";
+        BtnSave.Content = "Save Changes";
+
+        TxtName.Text = existingRule.Name;
+        TxtAppPath.Text = existingRule.ApplicationName;
+        TxtLocalPort.Text = existingRule.LocalPorts;
+        TxtRemotePort.Text = existingRule.RemotePorts;
+        ChkEnabled.IsChecked = existingRule.Enabled;
+        ChkApproved.IsChecked = existingRule.IsApproved;
+
+        SelectComboValue(CmbDirection, existingRule.Direction);
+        SelectComboValue(CmbAction, existingRule.Action);
+        SelectComboValue(CmbProtocol, existingRule.Protocol);
+        SelectComboValue(CmbProfiles, existingRule.Profiles);
+    }
+
+    private static void SelectComboValue(ComboBox cmb, string val)
+    {
+        for (int i = 0; i < cmb.Items.Count; i++)
+        {
+            if (cmb.Items[i] is ComboBoxItem item &&
+                item.Content.ToString()!.Equals(val, StringComparison.OrdinalIgnoreCase))
+            {
+                cmb.SelectedIndex = i;
+                return;
+            }
         }
     }
 
