@@ -1,7 +1,10 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
-namespace WinFirewallConsole.Storage;
+namespace FirewallConsole.Storage;
 
 public class IniConfig
 {
