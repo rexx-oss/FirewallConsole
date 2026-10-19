@@ -7,15 +7,17 @@ namespace FirewallConsole.Firewall;
 
 public class FirewallEngine
 {
-    private readonly IniConfig _approvedRulesIni = new();
-    private readonly string _rulesFilePath;
+    private readonly IniConfig _config = new();
+    private readonly string _iniPath;
 
     public FirewallEngine()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _rulesFilePath = Path.Combine(appDir, "approved_rules.ini");
-        _approvedRulesIni.Load(_rulesFilePath);
+        _iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.ini");
+        _config.Load(_iniPath);
     }
+
+    public IniConfig Config => _config;
+    public string ConfigPath => _iniPath;
 
     private static dynamic GetPolicy()
     {
@@ -71,7 +73,7 @@ public class FirewallEngine
                 bool isCore = IsCoreNetworking(grouping);
 
                 string section = GetSectionForDirection(direction);
-                bool isApproved = isCore || _approvedRulesIni.GetValue(section, name, "false") == "true";
+                bool isApproved = isCore || _config.GetValue(section, name, "false") == "true";
 
                 int protoNum = (int)rule.Protocol;
                 string protoStr = protoNum switch
@@ -109,50 +111,80 @@ public class FirewallEngine
         return list;
     }
 
-    public (int disabledAllowRules, int retainedRules) EnforceMode(bool whitelistMode)
+    /// <summary>
+    /// Strict Whitelist Mode: Disables unapproved allow rules and tracks them in [AutoDisabled].
+    /// Permissive Blacklist Mode: Restores previously auto-disabled rules.
+    /// </summary>
+    public (int affectedCount, int retainedCount) SetOperatingMode(bool whitelistMode)
     {
-        if (!whitelistMode) return (0, 0);
-
         dynamic policy = GetPolicy();
         dynamic rules = policy.Rules;
-        int disabledCount = 0;
-        int retainedCount = 0;
+        int affected = 0;
+        int retained = 0;
 
-        foreach (dynamic rule in rules)
+        if (whitelistMode)
         {
-            try
+            foreach (dynamic rule in rules)
             {
-                int action = (int)rule.Action; // 1 = Allow, 0 = Block
-                if (action != 1) continue;      // Block rules remain untouched
-
-                string name = rule.Name ?? "";
-                string grouping = rule.Grouping ?? "";
-                string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
-
-                bool isCore = IsCoreNetworking(grouping);
-                string section = GetSectionForDirection(direction);
-                bool isApproved = isCore || _approvedRulesIni.GetValue(section, name, "false") == "true";
-
-                if (isApproved)
+                try
                 {
-                    retainedCount++;
-                }
-                else
-                {
-                    if ((bool)rule.Enabled)
+                    int action = (int)rule.Action; // 1 = Allow, 0 = Block
+                    if (action != 1) continue;      // Block rules remain untouched
+
+                    string name = rule.Name ?? "";
+                    string grouping = rule.Grouping ?? "";
+                    string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+
+                    bool isCore = IsCoreNetworking(grouping);
+                    string section = GetSectionForDirection(direction);
+                    bool isApproved = isCore || _config.GetValue(section, name, "false") == "true";
+
+                    if (isApproved)
+                    {
+                        retained++;
+                    }
+                    else if ((bool)rule.Enabled)
                     {
                         rule.Enabled = false;
-                        disabledCount++;
+                        _config.SetValue("AutoDisabled", $"{direction}|{name}", "true");
+                        affected++;
                     }
                 }
+                catch { }
             }
-            catch
+        }
+        else
+        {
+            // Restore rules that were suppressed by Whitelist mode
+            var autoDisabledKeys = new List<string>(_config.GetKeys("AutoDisabled"));
+            foreach (var key in autoDisabledKeys)
             {
-                // Skip rules protected by Active Directory or domain policies
+                var parts = key.Split('|');
+                if (parts.Length != 2) continue;
+                string dirStr = parts[0];
+                string ruleName = parts[1];
+                int targetDir = dirStr.Equals("Inbound", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+
+                foreach (dynamic rule in rules)
+                {
+                    try
+                    {
+                        if (string.Equals((string)(rule.Name ?? ""), ruleName, StringComparison.OrdinalIgnoreCase) &&
+                            (int)rule.Direction == targetDir)
+                        {
+                            rule.Enabled = true;
+                            affected++;
+                        }
+                    }
+                    catch { }
+                }
+                _config.RemoveKey("AutoDisabled", key);
             }
         }
 
-        return (disabledCount, retainedCount);
+        _config.SetValue("Settings", "Mode", whitelistMode ? "Whitelist" : "Blacklist");
+        _config.Save(_iniPath);
+        return (affected, retained);
     }
 
     public void AddRule(FirewallRuleModel model)
@@ -202,8 +234,8 @@ public class FirewallEngine
         if (model.IsApproved)
         {
             string section = GetSectionForDirection(model.Direction);
-            _approvedRulesIni.SetValue(section, model.Name, "true");
-            _approvedRulesIni.Save(_rulesFilePath);
+            _config.SetValue(section, model.Name, "true");
+            _config.Save(_iniPath);
         }
     }
 
@@ -235,15 +267,16 @@ public class FirewallEngine
     public void ApproveRule(FirewallRuleModel target)
     {
         string section = GetSectionForDirection(target.Direction);
-        _approvedRulesIni.SetValue(section, target.Name, "true");
-        _approvedRulesIni.Save(_rulesFilePath);
+        _config.SetValue(section, target.Name, "true");
+        _config.RemoveKey("AutoDisabled", $"{target.Direction}|{target.Name}");
+        _config.Save(_iniPath);
     }
 
     public void RevokeRule(FirewallRuleModel target)
     {
         string section = GetSectionForDirection(target.Direction);
-        _approvedRulesIni.RemoveKey(section, target.Name);
-        _approvedRulesIni.Save(_rulesFilePath);
+        _config.RemoveKey(section, target.Name);
+        _config.Save(_iniPath);
 
         if (target.Action.Equals("Allow", StringComparison.OrdinalIgnoreCase))
         {
@@ -258,13 +291,11 @@ public class FirewallEngine
             dynamic policy = GetPolicy();
             policy.Rules.Remove(target.Name);
         }
-        catch
-        {
-            // Ignore if rule was already removed
-        }
+        catch { }
 
         string section = GetSectionForDirection(target.Direction);
-        _approvedRulesIni.RemoveKey(section, target.Name);
-        _approvedRulesIni.Save(_rulesFilePath);
+        _config.RemoveKey(section, target.Name);
+        _config.RemoveKey("AutoDisabled", $"{target.Direction}|{target.Name}");
+        _config.Save(_iniPath);
     }
 }
