@@ -7,7 +7,7 @@ namespace FirewallConsole;
 
 public partial class App : Application
 {
-    public static IniConfig Settings { get; } = new();
+    public static IniConfig Config { get; } = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -20,11 +20,25 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        var settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
-        Settings.Load(settingsPath);
+        var iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.ini");
+        Config.Load(iniPath);
 
-        string theme = Settings.GetValue("Appearance", "Theme", "Light");
+        string theme = Config.GetValue("Settings", "Theme", "Light");
         SetTheme(theme);
+
+        var mainWindow = new MainWindow();
+        bool startMinimized = bool.TryParse(Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
+
+        if (startMinimized)
+        {
+            mainWindow.WindowState = WindowState.Minimized;
+            mainWindow.ShowInTaskbar = false;
+            mainWindow.Hide();
+        }
+        else
+        {
+            mainWindow.Show();
+        }
     }
 
     public static void SetTheme(string theme)
@@ -37,7 +51,7 @@ public partial class App : Application
         Current.Resources.MergedDictionaries.Clear();
         Current.Resources.MergedDictionaries.Add(resourceDict);
 
-        Settings.SetValue("Appearance", "Theme", theme);
-        Settings.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini"));
+        Config.SetValue("Settings", "Theme", theme);
+        Config.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.ini"));
     }
 }
