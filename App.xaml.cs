@@ -1,7 +1,9 @@
+using System;
+using System.IO;
 using System.Windows;
-using WinFirewallConsole.Storage;
+using FirewallConsole.Storage;
 
-namespace WinFirewallConsole;
+namespace FirewallConsole;
 
 public partial class App : Application
 {
@@ -11,7 +13,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var settingsPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+        var settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
         Settings.Load(settingsPath);
 
         string theme = Settings.GetValue("Appearance", "Theme", "Dark");
@@ -29,6 +31,6 @@ public partial class App : Application
         Current.Resources.MergedDictionaries.Add(resourceDict);
 
         Settings.SetValue("Appearance", "Theme", theme);
-        Settings.Save(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini"));
+        Settings.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini"));
     }
 }
