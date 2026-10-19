@@ -18,12 +18,12 @@
                    Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,15"/>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="10">
-                <TextBlock Text="Rule Name *" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
-                <TextBox x:Name="TxtName" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+            <StackPanel>
+                <TextBlock Text="Rule Name *" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                <TextBox x:Name="TxtName" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}" Margin="0,0,0,10"/>
 
-                <TextBlock Text="Program / Executable Path" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,5,0,0"/>
-                <Grid>
+                <TextBlock Text="Program / Executable Path" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -32,14 +32,14 @@
                     <Button Grid.Column="1" Content="Browse" Click="Browse_Click" Margin="6,0,0,0" Padding="10,4" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
                 </Grid>
 
-                <Grid Margin="0,5,0,0">
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
-                        <TextBlock Text="Direction" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Direction" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <ComboBox x:Name="CmbDirection" SelectedIndex="0" Padding="6">
                             <ComboBoxItem Content="Inbound"/>
                             <ComboBoxItem Content="Outbound"/>
@@ -47,7 +47,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
-                        <TextBlock Text="Action" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Action" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <ComboBox x:Name="CmbAction" SelectedIndex="0" Padding="6">
                             <ComboBoxItem Content="Allow"/>
                             <ComboBoxItem Content="Block"/>
@@ -55,14 +55,14 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Margin="0,5,0,0">
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
-                        <TextBlock Text="Protocol" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Protocol" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <ComboBox x:Name="CmbProtocol" SelectedIndex="0" Padding="6">
                             <ComboBoxItem Content="Any"/>
                             <ComboBoxItem Content="TCP"/>
@@ -72,7 +72,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
-                        <TextBlock Text="Profiles" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Profiles" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <ComboBox x:Name="CmbProfiles" SelectedIndex="0" Padding="6">
                             <ComboBoxItem Content="All"/>
                             <ComboBoxItem Content="Domain"/>
@@ -82,24 +82,24 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Margin="0,5,0,0">
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
-                        <TextBlock Text="Local Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Local Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <TextBox x:Name="TxtLocalPort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
-                        <TextBlock Text="Remote Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+                        <TextBlock Text="Remote Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                         <TextBox x:Name="TxtRemotePort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
                     </StackPanel>
                 </Grid>
 
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                     <CheckBox x:Name="ChkEnabled" Content="Enabled" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,20,0"/>
                     <CheckBox x:Name="ChkApproved" Content="Add to Whitelist (Approved)" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
                 </StackPanel>
