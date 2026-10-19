@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -30,6 +32,21 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _watchdogTimer = new();
     private bool _isClosingFromTray = false;
 
+    [DllImport("psapi.dll")]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+    public static void TrimWorkingSet()
+    {
+        GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+        GC.WaitForPendingFinalizers();
+        try
+        {
+            using var proc = Process.GetCurrentProcess();
+            EmptyWorkingSet(proc.Handle);
+        }
+        catch { }
+    }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -39,7 +56,7 @@ public partial class MainWindow : Window
 
         Loaded += MainWindow_Loaded;
 
-        _watchdogTimer.Interval = TimeSpan.FromSeconds(10);
+        _watchdogTimer.Interval = TimeSpan.FromSeconds(15);
         _watchdogTimer.Tick += async (s, e) =>
         {
             if (_isWhitelistMode)
@@ -58,7 +75,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _blockedLogs.Insert(0, item);
-            if (_blockedLogs.Count > 500)
+            if (_blockedLogs.Count > 300)
             {
                 _blockedLogs.RemoveAt(_blockedLogs.Count - 1);
             }
@@ -142,7 +159,7 @@ public partial class MainWindow : Window
             bool startMinimized = bool.TryParse(App.Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
             ChkStartMinimized.IsChecked = startMinimized;
 
-            StatusLabel.Text = "Synchronizing rules via unique IDs...";
+            StatusLabel.Text = "Synchronizing backup rules from firecon.ini...";
             int restored = await Task.Run(() => _engine.SyncStoredRulesFromConfig());
 
             StatusLabel.Text = "Applying configured firewall policy...";
@@ -154,6 +171,8 @@ public partial class MainWindow : Window
             StatusLabel.Text = _isWhitelistMode
                 ? $"Whitelist Active: Restored {restored} rules. Suppressed {affected} unapproved rules."
                 : $"Blacklist Active: Restored {restored} rules. Operating permissively.";
+
+            TrimWorkingSet();
         }
         catch (Exception ex)
         {
@@ -167,6 +186,7 @@ public partial class MainWindow : Window
         _allRules = await Task.Run(() => _engine.GetAllRules());
         ApplyFilter();
         StatsLabel.Text = $"Total Outbound: {_allRules.Count(r => r.Direction == "Outbound")} | Total Inbound: {_allRules.Count(r => r.Direction == "Inbound")}";
+        TrimWorkingSet();
     }
 
     private void ApplyFilter()
@@ -343,30 +363,20 @@ public partial class MainWindow : Window
         StatusLabel.Text = $"Revoked {selected.Count} rule(s).";
     }
 
-    private async void Enable_Click(object sender, RoutedEventArgs e)
+    private async void ToggleEnable_Click(object sender, RoutedEventArgs e)
     {
         var selected = GetSelectedRules();
         if (selected.Count == 0) return;
 
         await Task.Run(() =>
         {
-            foreach (var r in selected) _engine.SetRuleEnabled(r, true);
+            foreach (var r in selected)
+            {
+                _engine.SetRuleEnabled(r, !r.Enabled);
+            }
         });
         await ReloadRulesAsync();
-        StatusLabel.Text = $"Enabled {selected.Count} rule(s).";
-    }
-
-    private async void Disable_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = GetSelectedRules();
-        if (selected.Count == 0) return;
-
-        await Task.Run(() =>
-        {
-            foreach (var r in selected) _engine.SetRuleEnabled(r, false);
-        });
-        await ReloadRulesAsync();
-        StatusLabel.Text = $"Disabled {selected.Count} rule(s).";
+        StatusLabel.Text = $"Toggled enabled state for {selected.Count} rule(s).";
     }
 
     private async void ToggleAction_Click(object sender, RoutedEventArgs e)
@@ -409,6 +419,7 @@ public partial class MainWindow : Window
             BtnToggleLogging.Content = "▶ Start Logging";
             BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("SuccessBrush");
             LoggingStatusText.Text = "Logging stopped. Monitoring paused.";
+            TrimWorkingSet();
         }
         else
         {
@@ -419,7 +430,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ClearBlockedLog_Click(object sender, RoutedEventArgs e) => _blockedLogs.Clear();
+    private void ClearBlockedLog_Click(object sender, RoutedEventArgs e)
+    {
+        _blockedLogs.Clear();
+        TrimWorkingSet();
+    }
 
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
@@ -462,6 +477,7 @@ public partial class MainWindow : Window
         {
             Hide();
             ShowInTaskbar = false;
+            TrimWorkingSet();
         }
     }
 
@@ -472,6 +488,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             Hide();
             ShowInTaskbar = false;
+            TrimWorkingSet();
         }
         else
         {
