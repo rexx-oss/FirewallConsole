@@ -1,10 +1,6 @@
-name: Build and Upload Artifact
+name: Manual Build Artifact
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -12,7 +8,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Source
         uses: actions/checkout@v4
 
       - name: Setup .NET 10
@@ -20,28 +16,26 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore Dependencies
-        run: dotnet restore FirewallConsole.csproj
-
       - name: Publish firecon.exe
         run: >
           dotnet publish FirewallConsole.csproj
           -c Release
           -r win-x64
-          --no-restore
           --self-contained false
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -o ./publish
 
-      - name: Package Build Artifact
+      - name: Create Zip Package
         shell: pwsh
         run: |
-          Compress-Archive -Path ./publish/* -DestinationPath ./firecon-build-${{ github.sha }}.zip
+          Compress-Archive -Path ./publish/* -DestinationPath ./firecon-win-x64.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firecon-win-x64-build
-          path: ./firecon-build-${{ github.sha }}.zip
-          retention-days: 14
+          name: firecon-win-x64
+          path: |
+            ./firecon-win-x64.zip
+            ./publish/firecon.exe
+          retention-days: 30
