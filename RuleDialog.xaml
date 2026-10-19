@@ -1,112 +1,114 @@
-using System.IO;
-using System.Windows;
-using System.Windows.Controls;
-using FirewallConsole.Firewall;
-using Microsoft.Win32;
+<Window x:Class="FirewallConsole.RuleDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Firewall Rule Editor" 
+        Height="540" Width="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource BgBrush}">
 
-namespace FirewallConsole;
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-public partial class RuleDialog : Window
-{
-    public FirewallRuleModel? CreatedRule { get; private set; }
+        <TextBlock x:Name="DialogTitle" Grid.Row="0" Text="Add New Firewall Rule" FontSize="18" FontWeight="Bold" 
+                   Foreground="{DynamicResource TextPrimary}" Margin="0,0,0,15"/>
 
-    public RuleDialog(string? prefilledPath = null, string? direction = null, string? protocol = null)
-    {
-        InitializeComponent();
-        if (!string.IsNullOrWhiteSpace(prefilledPath))
-        {
-            TxtAppPath.Text = prefilledPath;
-            TxtName.Text = Path.GetFileNameWithoutExtension(prefilledPath);
-        }
-        if (!string.IsNullOrWhiteSpace(direction))
-        {
-            SelectComboValue(CmbDirection, direction);
-        }
-        if (!string.IsNullOrWhiteSpace(protocol))
-        {
-            SelectComboValue(CmbProtocol, protocol);
-        }
-    }
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Rule Name *" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                <TextBox x:Name="TxtName" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}" Margin="0,0,0,10"/>
 
-    public RuleDialog(FirewallRuleModel existingRule)
-    {
-        InitializeComponent();
+                <TextBlock Text="Program / Executable Path" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TxtAppPath" Grid.Column="0" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+                    <Button Grid.Column="1" Content="Browse" Click="Browse_Click" Margin="6,0,0,0" Padding="10,4" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
+                </Grid>
 
-        DialogTitle.Text = $"Edit Rule: {existingRule.Name}";
-        BtnSave.Content = "Save Changes";
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-        TxtName.Text = existingRule.Name;
-        TxtAppPath.Text = existingRule.ApplicationName;
-        TxtLocalPort.Text = existingRule.LocalPorts;
-        TxtRemotePort.Text = existingRule.RemotePorts;
-        ChkEnabled.IsChecked = existingRule.Enabled;
-        ChkApproved.IsChecked = existingRule.IsApproved;
+                    <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                        <TextBlock Text="Direction" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CmbDirection" SelectedIndex="0" Padding="6">
+                            <ComboBoxItem Content="Inbound"/>
+                            <ComboBoxItem Content="Outbound"/>
+                        </ComboBox>
+                    </StackPanel>
 
-        SelectComboValue(CmbDirection, existingRule.Direction);
-        SelectComboValue(CmbAction, existingRule.Action);
-        SelectComboValue(CmbProtocol, existingRule.Protocol);
-        SelectComboValue(CmbProfiles, existingRule.Profiles);
-    }
+                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                        <TextBlock Text="Action" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CmbAction" SelectedIndex="0" Padding="6">
+                            <ComboBoxItem Content="Allow"/>
+                            <ComboBoxItem Content="Block"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
 
-    private static void SelectComboValue(ComboBox cmb, string val)
-    {
-        for (int i = 0; i < cmb.Items.Count; i++)
-        {
-            if (cmb.Items[i] is ComboBoxItem item &&
-                item.Content.ToString()!.Equals(val, StringComparison.OrdinalIgnoreCase))
-            {
-                cmb.SelectedIndex = i;
-                return;
-            }
-        }
-    }
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-    private void Browse_Click(object sender, RoutedEventArgs e)
-    {
-        var ofd = new OpenFileDialog
-        {
-            Filter = "Executable Files (*.exe)|*.exe|All Files (*.*)|*.*",
-            Title = "Select Application Executable"
-        };
-        if (ofd.ShowDialog() == true)
-        {
-            TxtAppPath.Text = ofd.FileName;
-            if (string.IsNullOrWhiteSpace(TxtName.Text))
-            {
-                TxtName.Text = Path.GetFileNameWithoutExtension(ofd.FileName);
-            }
-        }
-    }
+                    <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                        <TextBlock Text="Protocol" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CmbProtocol" SelectedIndex="0" Padding="6">
+                            <ComboBoxItem Content="Any"/>
+                            <ComboBoxItem Content="TCP"/>
+                            <ComboBoxItem Content="UDP"/>
+                            <ComboBoxItem Content="ICMPv4"/>
+                        </ComboBox>
+                    </StackPanel>
 
-    private void Create_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(TxtName.Text))
-        {
-            MessageBox.Show("Please enter a rule name.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                        <TextBlock Text="Profiles" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <ComboBox x:Name="CmbProfiles" SelectedIndex="0" Padding="6">
+                            <ComboBoxItem Content="All"/>
+                            <ComboBoxItem Content="Domain"/>
+                            <ComboBoxItem Content="Private"/>
+                            <ComboBoxItem Content="Public"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
 
-        CreatedRule = new FirewallRuleModel
-        {
-            Name = TxtName.Text.Trim(),
-            ApplicationName = TxtAppPath.Text.Trim(),
-            Direction = ((ComboBoxItem)CmbDirection.SelectedItem).Content.ToString()!,
-            Action = ((ComboBoxItem)CmbAction.SelectedItem).Content.ToString()!,
-            Protocol = ((ComboBoxItem)CmbProtocol.SelectedItem).Content.ToString()!,
-            Profiles = ((ComboBoxItem)CmbProfiles.SelectedItem).Content.ToString()!,
-            LocalPorts = string.IsNullOrWhiteSpace(TxtLocalPort.Text) ? "*" : TxtLocalPort.Text.Trim(),
-            RemotePorts = string.IsNullOrWhiteSpace(TxtRemotePort.Text) ? "*" : TxtRemotePort.Text.Trim(),
-            Enabled = ChkEnabled.IsChecked ?? true,
-            IsApproved = ChkApproved.IsChecked ?? true
-        };
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-        DialogResult = true;
-        Close();
-    }
+                    <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                        <TextBlock Text="Local Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtLocalPort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+                    </StackPanel>
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
-    }
-}
+                    <StackPanel Grid.Column="1" Margin="5,0,0,0">
+                        <TextBlock Text="Remote Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtRemotePort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                    <CheckBox x:Name="ChkEnabled" Content="Enabled" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,20,0"/>
+                    <CheckBox x:Name="ChkApproved" Content="Add to Whitelist (Approved)" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Cancel" Click="Cancel_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,10,0" Padding="14,6"/>
+            <Button x:Name="BtnSave" Content="Create Rule" Click="Create_Click" Background="{DynamicResource AccentBrush}" Foreground="White" Padding="14,6"/>
+        </StackPanel>
+    </Grid>
+</Window>
