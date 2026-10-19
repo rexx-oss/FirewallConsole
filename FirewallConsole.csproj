@@ -13,6 +13,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationIcon Condition="Exists('icon.ico')">icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
     <Resource Include="icon.png" />
   </ItemGroup>
 
