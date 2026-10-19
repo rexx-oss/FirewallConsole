@@ -8,6 +8,8 @@
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
+        StateChanged="Window_StateChanged"
+        Closing="Window_Closing"
         Background="{DynamicResource BgBrush}">
 
     <Window.Resources>
@@ -70,7 +72,10 @@
                                FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
                 </StackPanel>
             </StackPanel>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <CheckBox x:Name="ChkStartMinimized" Content="Start Minimized" Checked="ChkStartMinimized_Changed" Unchecked="ChkStartMinimized_Changed" 
+                          Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" Margin="0,0,14,0"/>
                 <Button x:Name="ModeToggleButton" Content="🛡 Mode: Whitelist (Strict)" Click="ModeToggle_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0"/>
                 <Button Content="🌓 Theme" Click="ThemeToggle_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
             </StackPanel>
@@ -101,7 +106,7 @@
             </Grid>
         </Border>
 
-        <!-- Inbound / Outbound Tabs with Multi-Select Grid -->
+        <!-- Inbound / Outbound Tabs -->
         <TabControl x:Name="RulesTabControl" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
             <TabItem Header="Inbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
