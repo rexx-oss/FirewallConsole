@@ -4,6 +4,7 @@
         Title="Firewall Console (.NET 10)" 
         Height="760" Width="1180"
         WindowStartupLocation="CenterScreen"
+        Icon="icon.png"
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
@@ -61,12 +62,15 @@
 
         <!-- Header -->
         <DockPanel Grid.Row="0" Margin="0,0,0,12">
-            <StackPanel Orientation="Vertical">
-                <TextBlock Text="Firewall Console" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
-                <TextBlock Text="Auto-suppress unapproved allow rules • Drag &amp; drop EXE anywhere to create rules" 
-                           FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="icon.png" Width="32" Height="32" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                <StackPanel Orientation="Vertical">
+                    <TextBlock Text="Firewall Console" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
+                    <TextBlock Text="Auto-suppress unapproved allow rules • Drag &amp; drop EXE anywhere to create rules" 
+                               FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                </StackPanel>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                 <Button x:Name="ModeToggleButton" Content="🛡 Mode: Whitelist (Strict)" Click="ModeToggle_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,8,0"/>
                 <Button Content="🌓 Theme" Click="ThemeToggle_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
             </StackPanel>
@@ -88,7 +92,8 @@
                     <Button Content="➕ New Rule" Click="NewRule_Click" Background="{DynamicResource AccentBrush}" Margin="0,0,6,0"/>
                     <Button Content="✔ Approve" Click="Approve_Click" Background="{DynamicResource SuccessBrush}" Margin="0,0,6,0"/>
                     <Button Content="✖ Revoke" Click="Revoke_Click" Background="{DynamicResource DangerBrush}" Margin="0,0,6,0"/>
-                    <Button Content="Enable/Disable" Click="ToggleEnable_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
+                    <Button Content="Enable" Click="Enable_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
+                    <Button Content="Disable" Click="Disable_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
                     <Button Content="Allow/Block" Click="ToggleAction_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
                     <Button Content="🗑 Delete" Click="Delete_Click" Background="{DynamicResource DangerBrush}" Margin="0,0,6,0"/>
                     <Button Content="🔄 Refresh" Click="Refresh_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
@@ -96,11 +101,12 @@
             </Grid>
         </Border>
 
-        <!-- Inbound / Outbound Tabs -->
+        <!-- Inbound / Outbound Tabs with Multi-Select Grid -->
         <TabControl x:Name="RulesTabControl" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
             <TabItem Header="Inbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                              SelectionMode="Extended" SelectionUnit="FullRow"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                               Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
@@ -121,6 +127,7 @@
             <TabItem Header="Outbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                              SelectionMode="Extended" SelectionUnit="FullRow"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                               Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
