@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -57,17 +56,17 @@ public partial class MainWindow : Window
         {
             try
             {
-                using var bmp = new Bitmap(iconPath);
-                _notifyIcon.Icon = Icon.FromHandle(bmp.GetHicon());
+                using var bmp = new System.Drawing.Bitmap(iconPath);
+                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(bmp.GetHicon());
             }
             catch
             {
-                _notifyIcon.Icon = SystemIcons.Shield;
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Shield;
             }
         }
         else
         {
-            _notifyIcon.Icon = SystemIcons.Shield;
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Shield;
         }
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
