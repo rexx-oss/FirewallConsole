@@ -1,8 +1,12 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using WinFirewallConsole.Firewall;
+using FirewallConsole.Firewall;
+using FirewallConsole.Storage;
 
-namespace WinFirewallConsole;
+namespace FirewallConsole;
 
 public partial class MainWindow : Window
 {
@@ -17,7 +21,6 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // Check enforce on startup from settings.ini
         var enforceStartup = App.Settings.GetValue("Policy", "EnforceOnStartup", "true");
         if (bool.TryParse(enforceStartup, out bool enforce) && enforce)
         {
