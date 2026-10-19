@@ -68,7 +68,7 @@
                 <Image Source="icon.png" Width="32" Height="32" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Orientation="Vertical">
                     <TextBlock Text="Firewall Console" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
-                    <TextBlock Text="Auto-suppress unapproved allow rules • Double-click row to edit • Real-time drop monitor" 
+                    <TextBlock Text="Double-click rules to edit • Double-click blocked connections to create rules" 
                                FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
                 </StackPanel>
             </StackPanel>
@@ -107,9 +107,9 @@
             </Grid>
         </Border>
 
-        <!-- Main Tab Control -->
+        <!-- Tabs -->
         <TabControl x:Name="RulesTabControl" Grid.Row="2" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
-            <!-- Outbound Tab -->
+            <!-- Outbound Rules -->
             <TabItem Header="Outbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
@@ -132,7 +132,7 @@
                 </Border>
             </TabItem>
 
-            <!-- Inbound Tab -->
+            <!-- Inbound Rules -->
             <TabItem Header="Inbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
@@ -155,7 +155,7 @@
                 </Border>
             </TabItem>
 
-            <!-- Blocked Connections Tab -->
+            <!-- Blocked Connections -->
             <TabItem Header="Blocked Connections">
                 <Grid Margin="0,8,0,0">
                     <Grid.RowDefinitions>
@@ -168,13 +168,14 @@
                             <Button x:Name="BtnToggleLogging" Content="▶ Start Logging" Click="ToggleLogging_Click" Background="{DynamicResource SuccessBrush}" Margin="0,0,8,0"/>
                             <Button Content="Clear Log" Click="ClearBlockedLog_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
                         </StackPanel>
-                        <TextBlock x:Name="LoggingStatusText" Text="Logging stopped. Click Start to monitor connection drops." 
+                        <TextBlock x:Name="LoggingStatusText" Text="Logging stopped. Double-click any blocked application to create a rule." 
                                    Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0"/>
                     </DockPanel>
 
                     <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <DataGrid x:Name="BlockedGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                                   IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
+                                  MouseDoubleClick="BlockedGrid_MouseDoubleClick"
                                   Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                                   BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                                   Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
