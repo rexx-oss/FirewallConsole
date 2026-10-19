@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -14,6 +15,7 @@ using System.Windows.Threading;
 using FirewallConsole.Firewall;
 using FirewallConsole.Models;
 using FirewallConsole.Monitoring;
+using WinForms = System.Windows.Forms;
 using Application = System.Windows.Application;
 using DataGrid = System.Windows.Controls.DataGrid;
 using DragEventArgs = System.Windows.DragEventArgs;
@@ -28,7 +30,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BlockedConnectionModel> _blockedLogs = new();
     private readonly BlockedConnectionMonitor _monitor = new();
     private bool _isWhitelistMode = true;
-    private System.Windows.Forms.NotifyIcon? _notifyIcon;
+    private WinForms.NotifyIcon? _notifyIcon;
+    private WinForms.ContextMenuStrip? _trayMenu;
+    private WinForms.ToolStripMenuItem? _trayModeMenuItem;
     private readonly DispatcherTimer _watchdogTimer = new();
     private bool _isClosingFromTray = false;
 
@@ -84,7 +88,7 @@ public partial class MainWindow : Window
 
     private void InitializeTrayAndIcons()
     {
-        _notifyIcon = new System.Windows.Forms.NotifyIcon
+        _notifyIcon = new WinForms.NotifyIcon
         {
             Text = "Firewall Console",
             Visible = true
@@ -92,7 +96,7 @@ public partial class MainWindow : Window
 
         try
         {
-            System.Drawing.Bitmap? bmp = null;
+            Bitmap? bmp = null;
             var resUri = new Uri("pack://application:,,,/icon.png", UriKind.Absolute);
             var streamInfo = Application.GetResourceStream(resUri);
 
@@ -101,7 +105,7 @@ public partial class MainWindow : Window
                 using var mem = new MemoryStream();
                 streamInfo.Stream.CopyTo(mem);
                 mem.Position = 0;
-                bmp = new System.Drawing.Bitmap(mem);
+                bmp = new Bitmap(mem);
                 mem.Position = 0;
                 this.Icon = BitmapFrame.Create(mem, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
             }
@@ -110,7 +114,7 @@ public partial class MainWindow : Window
                 var loosePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
                 if (File.Exists(loosePath))
                 {
-                    bmp = new System.Drawing.Bitmap(loosePath);
+                    bmp = new Bitmap(loosePath);
                     this.Icon = new BitmapImage(new Uri(loosePath, UriKind.Absolute));
                 }
             }
@@ -118,26 +122,45 @@ public partial class MainWindow : Window
             if (bmp != null)
             {
                 IntPtr hIcon = bmp.GetHicon();
-                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+                _notifyIcon.Icon = Icon.FromHandle(hIcon);
             }
             else
             {
-                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+                _notifyIcon.Icon = SystemIcons.Application;
             }
         }
         catch
         {
-            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            _notifyIcon.Icon = SystemIcons.Application;
         }
 
-        var menu = new System.Windows.Forms.ContextMenuStrip();
-        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow()));
-        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode)));
-        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp)));
+        _trayMenu = new WinForms.ContextMenuStrip();
+        _trayMenu.Font = new Font("Segoe UI", 9f);
 
-        _notifyIcon.ContextMenuStrip = menu;
+        var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
+        _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText(), null, (s, e) => Dispatcher.Invoke(ToggleMode));
+        var exitItem = new WinForms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
+
+        _trayMenu.Items.Add(openItem);
+        _trayMenu.Items.Add(_trayModeMenuItem);
+        _trayMenu.Items.Add(new WinForms.ToolStripSeparator());
+        _trayMenu.Items.Add(exitItem);
+
+        UpdateTrayMenuTheme();
+
+        _notifyIcon.ContextMenuStrip = _trayMenu;
         _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
+    }
+
+    private string GetModeText() =>
+        _isWhitelistMode ? "Mode: Whitelist (Strict)" : "Mode: Blacklist (Permissive)";
+
+    private void UpdateTrayMenuTheme()
+    {
+        if (_trayMenu == null) return;
+        var theme = App.Config.GetValue("Settings", "Theme", "Light");
+        bool isDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        _trayMenu.Renderer = new ModernMenuRenderer(isDark);
     }
 
     private void RestoreWindow()
@@ -156,8 +179,8 @@ public partial class MainWindow : Window
             _isWhitelistMode = mode.Equals("Whitelist", StringComparison.OrdinalIgnoreCase);
             UpdateModeButtonLabel();
 
-            bool startMinimized = bool.TryParse(App.Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
-            ChkStartMinimized.IsChecked = startMinimized;
+            bool startOnLogin = bool.TryParse(App.Config.GetValue("Settings", "StartOnLogin", "false"), out bool sol) && sol;
+            ChkStartOnLogin.IsChecked = startOnLogin;
 
             StatusLabel.Text = "Synchronizing backup rules from firecon.ini...";
             int restored = await Task.Run(() => _engine.SyncStoredRulesFromConfig());
@@ -246,32 +269,64 @@ public partial class MainWindow : Window
         var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
         await ReloadRulesAsync();
 
-        if (_isWhitelistMode)
-        {
-            MessageBox.Show($"Whitelist Mode Active!\n\nDefault Outbound: BLOCKED\nSuppressed allow rules: {affected}\nRetained valid rules: {retained}",
-                            "Whitelist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        else
-        {
-            MessageBox.Show($"Blacklist Mode Active!\n\nDefault Outbound: ALLOWED\nRestored rules: {affected}",
-                            "Blacklist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+        StatusLabel.Text = _isWhitelistMode
+            ? $"Whitelist Mode Active. Default Outbound: Blocked. Suppressed {affected} rules."
+            : $"Blacklist Mode Active. Default Outbound: Allowed. Restored {affected} rules.";
     }
 
     private void UpdateModeButtonLabel()
     {
-        ModeToggleButton.Content = _isWhitelistMode ? "🛡 Mode: Whitelist (Strict)" : "🔓 Mode: Blacklist (Permissive)";
+        string modeLabel = GetModeText();
+        ModeToggleButton.Content = modeLabel;
+        if (_trayModeMenuItem != null)
+        {
+            _trayModeMenuItem.Text = modeLabel;
+        }
         if (_notifyIcon != null)
         {
             _notifyIcon.Text = $"Firewall Console - {(_isWhitelistMode ? "Whitelist" : "Blacklist")}";
         }
     }
 
-    private void ChkStartMinimized_Changed(object sender, RoutedEventArgs e)
+    private void ChkStartOnLogin_Changed(object sender, RoutedEventArgs e)
     {
-        bool isChecked = ChkStartMinimized.IsChecked ?? false;
-        App.Config.SetValue("Settings", "StartMinimized", isChecked.ToString().ToLowerInvariant());
+        bool isChecked = ChkStartOnLogin.IsChecked ?? false;
+        App.Config.SetValue("Settings", "StartOnLogin", isChecked.ToString().ToLowerInvariant());
         App.Config.Save(_engine.ConfigPath);
+
+        Task.Run(() => SetStartupOnLogin(isChecked));
+    }
+
+    private static void SetStartupOnLogin(bool enable)
+    {
+        try
+        {
+            string exePath = Process.GetCurrentProcess().MainModule?.FileName 
+                             ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.exe");
+            const string taskName = "FirewallConsole_Startup";
+
+            if (enable)
+            {
+                var psi = new ProcessStartInfo("schtasks.exe", $"/Create /TN \"{taskName}\" /TR \"\\\"{exePath}\\\" --startup\" /SC ONLOGON /RL HIGHEST /F")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var p = Process.Start(psi);
+                p?.WaitForExit(2000);
+            }
+            else
+            {
+                var psi = new ProcessStartInfo("schtasks.exe", $"/Delete /TN \"{taskName}\" /F")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var p = Process.Start(psi);
+                p?.WaitForExit(2000);
+            }
+        }
+        catch { }
     }
 
     private void NewRule_Click(object sender, RoutedEventArgs e) => OpenRuleDialog();
@@ -416,7 +471,7 @@ public partial class MainWindow : Window
         if (_monitor.IsRunning)
         {
             _monitor.Stop();
-            BtnToggleLogging.Content = "▶ Start Logging";
+            BtnToggleLogging.Content = "Start Logging";
             BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("SuccessBrush");
             LoggingStatusText.Text = "Logging stopped. Monitoring paused.";
             TrimWorkingSet();
@@ -424,7 +479,7 @@ public partial class MainWindow : Window
         else
         {
             _monitor.Start();
-            BtnToggleLogging.Content = "⏹ Stop Logging";
+            BtnToggleLogging.Content = "Stop Logging";
             BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("DangerBrush");
             LoggingStatusText.Text = "Active: Monitoring blocked connection events. Double-click row to create rule.";
         }
@@ -441,6 +496,7 @@ public partial class MainWindow : Window
         var current = App.Config.GetValue("Settings", "Theme", "Light");
         var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
+        UpdateTrayMenuTheme();
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
@@ -471,20 +527,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_StateChanged(object sender, EventArgs e)
-    {
-        if (WindowState == WindowState.Minimized)
-        {
-            Hide();
-            ShowInTaskbar = false;
-            TrimWorkingSet();
-        }
-    }
-
     private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
         if (!_isClosingFromTray)
         {
+            // Close button "X" minimizes directly to the system tray
             e.Cancel = true;
             Hide();
             ShowInTaskbar = false;
@@ -503,5 +550,60 @@ public partial class MainWindow : Window
         _isClosingFromTray = true;
         Close();
         Application.Current.Shutdown();
+    }
+}
+
+/// <summary>
+/// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes.
+/// </summary>
+public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
+{
+    private readonly bool _isDark;
+
+    public ModernMenuRenderer(bool isDark) : base(new CustomColorTable(isDark))
+    {
+        _isDark = isDark;
+    }
+
+    protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
+    {
+        var g = e.Graphics;
+        var rect = new Rectangle(Point.Empty, e.Item.Size);
+
+        if (e.Item.Selected)
+        {
+            var hoverColor = _isDark ? Color.FromArgb(42, 42, 48) : Color.FromArgb(229, 231, 235);
+            using var b = new SolidBrush(hoverColor);
+            g.FillRectangle(b, rect);
+        }
+        else
+        {
+            var bgColor = _isDark ? Color.FromArgb(30, 30, 34) : Color.FromArgb(255, 255, 255);
+            using var b = new SolidBrush(bgColor);
+            g.FillRectangle(b, rect);
+        }
+    }
+
+    protected override void OnRenderItemText(WinForms.ToolStripItemTextRenderEventArgs e)
+    {
+        e.TextColor = _isDark ? Color.FromArgb(244, 244, 246) : Color.FromArgb(17, 24, 39);
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
+    {
+        var sepColor = _isDark ? Color.FromArgb(51, 51, 56) : Color.FromArgb(209, 213, 219);
+        using var pen = new Pen(sepColor);
+        int y = e.Item.Height / 2;
+        e.Graphics.DrawLine(pen, 4, y, e.Item.Width - 4, y);
+    }
+
+    private class CustomColorTable : WinForms.ProfessionalColorTable
+    {
+        private readonly bool _dark;
+        public CustomColorTable(bool dark) => _dark = dark;
+
+        public override Color ToolStripDropDownBackground => _dark ? Color.FromArgb(30, 30, 34) : Color.FromArgb(255, 255, 255);
+        public override Color MenuBorder => _dark ? Color.FromArgb(51, 51, 56) : Color.FromArgb(209, 213, 219);
     }
 }
