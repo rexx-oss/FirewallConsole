@@ -8,7 +8,6 @@ namespace FirewallConsole.Firewall;
 
 public class FirewallEngine
 {
-    private const string ClsidFwPolicy2 = "{E2B3C97C-6AE1-41AC-817A-F6F92166D7DD}";
     private readonly IniConfig _approvedRulesIni = new();
     private readonly string _rulesFilePath;
 
@@ -19,10 +18,14 @@ public class FirewallEngine
         _approvedRulesIni.Load(_rulesFilePath);
     }
 
-    private dynamic GetPolicy()
+    private static dynamic GetPolicy()
     {
-        var type = Type.GetTypeFromCLSID(new Guid(ClsidFwPolicy2))
-            ?? throw new InvalidOperationException("Windows Firewall COM library not available.");
+        Type? type = Type.GetTypeFromProgID("HNetCfg.FwPolicy2")
+                     ?? Type.GetTypeFromCLSID(new Guid("{E2B3C97F-6AE1-41AC-817A-F6F92166D7DD}"));
+
+        if (type == null)
+            throw new PlatformNotSupportedException("Windows Firewall COM interface (HNetCfg.FwPolicy2) is not registered on this system.");
+
         return Activator.CreateInstance(type)!;
     }
 
@@ -41,24 +44,31 @@ public class FirewallEngine
 
         foreach (dynamic rule in rules)
         {
-            string name = rule.Name ?? "";
-            string grouping = rule.Grouping ?? "";
-            bool isCore = IsCoreNetworkingGroup(grouping);
-            bool isApproved = isCore || _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
-
-            list.Add(new FirewallRuleModel
+            try
             {
-                Name = name,
-                Grouping = grouping,
-                ApplicationName = rule.ApplicationName ?? "",
-                Enabled = rule.Enabled,
-                Direction = rule.Direction == 1 ? "Inbound" : "Outbound",
-                Action = rule.Action == 1 ? "Allow" : "Block",
-                Protocol = rule.Protocol.ToString(),
-                LocalPorts = rule.LocalPorts ?? "*",
-                IsApproved = isApproved,
-                IsCoreNetworking = isCore
-            });
+                string name = rule.Name ?? "";
+                string grouping = rule.Grouping ?? "";
+                bool isCore = IsCoreNetworkingGroup(grouping);
+                bool isApproved = isCore || _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
+
+                list.Add(new FirewallRuleModel
+                {
+                    Name = name,
+                    Grouping = grouping,
+                    ApplicationName = rule.ApplicationName ?? "",
+                    Enabled = rule.Enabled,
+                    Direction = rule.Direction == 1 ? "Inbound" : "Outbound",
+                    Action = rule.Action == 1 ? "Allow" : "Block",
+                    Protocol = rule.Protocol.ToString(),
+                    LocalPorts = rule.LocalPorts ?? "*",
+                    IsApproved = isApproved,
+                    IsCoreNetworking = isCore
+                });
+            }
+            catch
+            {
+                // Continue reading even if a single rule has non-standard parameters
+            }
         }
         return list;
     }
@@ -101,23 +111,30 @@ public class FirewallEngine
 
         foreach (dynamic rule in rules)
         {
-            string name = rule.Name ?? "";
-            string grouping = rule.Grouping ?? "";
-
-            bool isCore = IsCoreNetworkingGroup(grouping);
-            bool isApproved = _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
-
-            if (isCore || isApproved)
+            try
             {
-                retained++;
-            }
-            else
-            {
-                if (rule.Enabled)
+                string name = rule.Name ?? "";
+                string grouping = rule.Grouping ?? "";
+
+                bool isCore = IsCoreNetworkingGroup(grouping);
+                bool isApproved = _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
+
+                if (isCore || isApproved)
                 {
-                    rule.Enabled = false;
-                    disabled++;
+                    retained++;
                 }
+                else
+                {
+                    if (rule.Enabled)
+                    {
+                        rule.Enabled = false;
+                        disabled++;
+                    }
+                }
+            }
+            catch
+            {
+                // Skip rules locked by active Group Policy or system domain controllers
             }
         }
 
