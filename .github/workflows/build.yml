@@ -16,6 +16,18 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Convert icon.png to icon.ico
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $bmp = [System.Drawing.Bitmap]::FromFile("icon.png")
+          $thumb = New-Object System.Drawing.Bitmap $bmp, (New-Object System.Drawing.Size 128, 128)
+          $h = $thumb.GetHicon()
+          $ico = [System.Drawing.Icon]::FromHandle($h)
+          $fs = [System.IO.FileStream]::new("icon.ico", [System.IO.FileMode]::Create)
+          $ico.Save($fs)
+          $fs.Close()
+
       - name: Publish firecon.exe
         run: >
           dotnet publish FirewallConsole.csproj
