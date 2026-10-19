@@ -1,193 +1,609 @@
-<Window x:Class="FirewallConsole.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Firewall Console (.NET 10)" 
-        Height="780" Width="1220"
-        WindowStartupLocation="CenterScreen"
-        Icon="icon.png"
-        AllowDrop="True"
-        DragOver="Window_DragOver"
-        Drop="Window_Drop"
-        Closing="Window_Closing"
-        FontFamily="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
-        Background="{DynamicResource BgBrush}">
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using FirewallConsole.Firewall;
+using FirewallConsole.Models;
+using FirewallConsole.Monitoring;
+using WinForms = System.Windows.Forms;
+using Application = System.Windows.Application;
+using DataGrid = System.Windows.Controls.DataGrid;
+using DragEventArgs = System.Windows.DragEventArgs;
+using MessageBox = System.Windows.MessageBox;
 
-    <Window.Resources>
-        <Style TargetType="TabItem">
-            <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="TabBorder" Background="Transparent" BorderThickness="0,0,0,2" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
+namespace FirewallConsole;
 
-    <Grid Margin="18">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+public partial class MainWindow : Window
+{
+    private readonly FirewallEngine _engine = new();
+    private List<FirewallRuleModel> _allRules = new();
+    private readonly ObservableCollection<BlockedConnectionModel> _blockedLogs = new();
+    private readonly BlockedConnectionMonitor _monitor = new();
+    private bool _isWhitelistMode = true;
+    private WinForms.NotifyIcon? _notifyIcon;
+    private WinForms.ContextMenuStrip? _trayMenu;
+    private WinForms.ToolStripMenuItem? _trayModeMenuItem;
+    private readonly DispatcherTimer _watchdogTimer = new();
+    private bool _isClosingFromTray = false;
 
-        <!-- Header -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,12">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Image Source="icon.png" Width="32" Height="32" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
-                <StackPanel Orientation="Vertical">
-                    <TextBlock Text="Firewall Console" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
-                    <TextBlock Text="Ultra-low resource usage • Double-click rules to edit • Double-click drops to authorize" 
-                               FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
-                </StackPanel>
-            </StackPanel>
+    [DllImport("psapi.dll")]
+    private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <CheckBox x:Name="ChkStartOnLogin" Content="Start on Login" Checked="ChkStartOnLogin_Changed" Unchecked="ChkStartOnLogin_Changed" 
-                          VerticalAlignment="Center" Margin="0,0,14,0"/>
-                <Button x:Name="ModeToggleButton" Content="Mode: Whitelist (Strict)" Click="ModeToggle_Click" Margin="0,0,8,0"/>
-                <Button Content="Theme" Click="ThemeToggle_Click"/>
-            </StackPanel>
-        </DockPanel>
+    public static void TrimWorkingSet()
+    {
+        GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+        GC.WaitForPendingFinalizers();
+        try
+        {
+            using var proc = Process.GetCurrentProcess();
+            EmptyWorkingSet(proc.Handle);
+        }
+        catch { }
+    }
 
-        <!-- Action Bar -->
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+    public MainWindow()
+    {
+        InitializeComponent();
+        InitializeTrayAndIcons();
+        BlockedGrid.ItemsSource = _blockedLogs;
+        _monitor.BlockedConnectionReceived += Monitor_BlockedConnectionReceived;
 
-                <TextBox x:Name="SearchBox" Grid.Column="0" VerticalContentAlignment="Center" Padding="8,4" 
-                         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextPrimary}" 
-                         BorderBrush="{DynamicResource BorderBrush}" TextChanged="SearchBox_TextChanged"/>
+        Loaded += MainWindow_Loaded;
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
-                    <Button Content="New Rule" Click="NewRule_Click" Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="Edit Selected" Click="EditSelected_Click" Margin="0,0,6,0"/>
-                    <Button Content="Approve" Click="Approve_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="Revoke" Click="Revoke_Click" Background="{DynamicResource WarningBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="Enable/Disable" Click="ToggleEnable_Click" Margin="0,0,6,0"/>
-                    <Button Content="Allow/Block" Click="ToggleAction_Click" Margin="0,0,6,0"/>
-                    <Button Content="Delete" Click="Delete_Click" Background="{DynamicResource DangerBrush}" Foreground="White" BorderThickness="0" Margin="0,0,6,0"/>
-                    <Button Content="Refresh" Click="Refresh_Click"/>
-                </StackPanel>
-            </Grid>
-        </Border>
+        _watchdogTimer.Interval = TimeSpan.FromSeconds(15);
+        _watchdogTimer.Tick += async (s, e) =>
+        {
+            if (_isWhitelistMode)
+            {
+                var (disabled, _) = await Task.Run(() => _engine.SetOperatingMode(true));
+                if (disabled > 0 && IsVisible)
+                {
+                    await ReloadRulesAsync();
+                }
+            }
+        };
+    }
 
-        <!-- Tabs -->
-        <TabControl x:Name="RulesTabControl" Grid.Row="2" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
-            <!-- Outbound Rules -->
-            <TabItem Header="Outbound Rules">
-                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
-                    <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
-                              MouseDoubleClick="Grid_MouseDoubleClick"
-                              VirtualizingStackPanel.IsVirtualizing="True"
-                              VirtualizingStackPanel.VirtualizationMode="Recycling"
-                              ScrollViewer.CanContentScroll="True"
-                              Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                              BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
-                              Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
-                        <DataGrid.Columns>
-                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding Enabled}" Width="55"/>
-                            <DataGridTextColumn Header="Rule Name" Binding="{Binding Name}" Width="240"/>
-                            <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="70"/>
-                            <DataGridTextColumn Header="Approved" Binding="{Binding IsApproved}" Width="75"/>
-                            <DataGridTextColumn Header="Proto" Binding="{Binding Protocol}" Width="60"/>
-                            <DataGridTextColumn Header="Local Port" Binding="{Binding LocalPorts}" Width="90"/>
-                            <DataGridTextColumn Header="Remote Port" Binding="{Binding RemotePorts}" Width="90"/>
-                            <DataGridTextColumn Header="Program" Binding="{Binding ApplicationName}" Width="*"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Border>
-            </TabItem>
+    private void Monitor_BlockedConnectionReceived(BlockedConnectionModel item)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _blockedLogs.Insert(0, item);
+            if (_blockedLogs.Count > 300)
+            {
+                _blockedLogs.RemoveAt(_blockedLogs.Count - 1);
+            }
+        });
+    }
 
-            <!-- Inbound Rules -->
-            <TabItem Header="Inbound Rules">
-                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
-                    <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
-                              MouseDoubleClick="Grid_MouseDoubleClick"
-                              VirtualizingStackPanel.IsVirtualizing="True"
-                              VirtualizingStackPanel.VirtualizationMode="Recycling"
-                              ScrollViewer.CanContentScroll="True"
-                              Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                              BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
-                              Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
-                        <DataGrid.Columns>
-                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding Enabled}" Width="55"/>
-                            <DataGridTextColumn Header="Rule Name" Binding="{Binding Name}" Width="240"/>
-                            <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="70"/>
-                            <DataGridTextColumn Header="Approved" Binding="{Binding IsApproved}" Width="75"/>
-                            <DataGridTextColumn Header="Proto" Binding="{Binding Protocol}" Width="60"/>
-                            <DataGridTextColumn Header="Local Port" Binding="{Binding LocalPorts}" Width="90"/>
-                            <DataGridTextColumn Header="Remote Port" Binding="{Binding RemotePorts}" Width="90"/>
-                            <DataGridTextColumn Header="Program" Binding="{Binding ApplicationName}" Width="*"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Border>
-            </TabItem>
+    private void InitializeTrayAndIcons()
+    {
+        _notifyIcon = new WinForms.NotifyIcon
+        {
+            Text = "Firewall Console",
+            Visible = true
+        };
 
-            <!-- Blocked Connections -->
-            <TabItem Header="Blocked Connections">
-                <Grid Margin="0,8,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+        try
+        {
+            System.Drawing.Bitmap? bmp = null;
+            var resUri = new Uri("pack://application:,,,/icon.png", UriKind.Absolute);
+            var streamInfo = Application.GetResourceStream(resUri);
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="BtnToggleLogging" Content="Start Logging" Click="ToggleLogging_Click" Background="{DynamicResource SuccessBrush}" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
-                            <Button Content="Clear Log" Click="ClearBlockedLog_Click"/>
-                        </StackPanel>
-                        <TextBlock x:Name="LoggingStatusText" Text="Logging stopped. Double-click any blocked application to create a rule." 
-                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                    </DockPanel>
+            if (streamInfo != null)
+            {
+                using var mem = new MemoryStream();
+                streamInfo.Stream.CopyTo(mem);
+                mem.Position = 0;
+                bmp = new System.Drawing.Bitmap(mem);
+                mem.Position = 0;
+                this.Icon = BitmapFrame.Create(mem, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            }
+            else
+            {
+                var loosePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
+                if (File.Exists(loosePath))
+                {
+                    bmp = new System.Drawing.Bitmap(loosePath);
+                    this.Icon = new BitmapImage(new Uri(loosePath, UriKind.Absolute));
+                }
+            }
 
-                    <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <DataGrid x:Name="BlockedGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                                  IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
-                                  MouseDoubleClick="BlockedGrid_MouseDoubleClick"
-                                  VirtualizingStackPanel.IsVirtualizing="True"
-                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                  ScrollViewer.CanContentScroll="True"
-                                  Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
-                                  BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
-                                  Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="85"/>
-                                <DataGridTextColumn Header="Dir" Binding="{Binding Direction}" Width="80"/>
-                                <DataGridTextColumn Header="Proto" Binding="{Binding Protocol}" Width="65"/>
-                                <DataGridTextColumn Header="Destination" Binding="{Binding Destination}" Width="160"/>
-                                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="160"/>
-                                <DataGridTextColumn Header="Application Path" Binding="{Binding ApplicationName}" Width="*"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Border>
-                </Grid>
-            </TabItem>
-        </TabControl>
+            if (bmp != null)
+            {
+                IntPtr hIcon = bmp.GetHicon();
+                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+            }
+            else
+            {
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            }
+        }
+        catch
+        {
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+        }
 
-        <!-- Status Footer -->
-        <DockPanel Grid.Row="3" Margin="0,8,0,0">
-            <TextBlock x:Name="StatusLabel" Text="Ready" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
-            <TextBlock x:Name="StatsLabel" Text="Rules: 0" HorizontalAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
-        </DockPanel>
-    </Grid>
-</Window>
+        _trayMenu = new WinForms.ContextMenuStrip();
+        _trayMenu.Font = new System.Drawing.Font("Segoe UI", 9f);
+
+        var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
+        _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText(), null, (s, e) => Dispatcher.Invoke(ToggleMode));
+        var exitItem = new WinForms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
+
+        _trayMenu.Items.Add(openItem);
+        _trayMenu.Items.Add(_trayModeMenuItem);
+        _trayMenu.Items.Add(new WinForms.ToolStripSeparator());
+        _trayMenu.Items.Add(exitItem);
+
+        UpdateTrayMenuTheme();
+
+        _notifyIcon.ContextMenuStrip = _trayMenu;
+        _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
+    }
+
+    private string GetModeText() =>
+        _isWhitelistMode ? "Mode: Whitelist (Strict)" : "Mode: Blacklist (Permissive)";
+
+    private void UpdateTrayMenuTheme()
+    {
+        if (_trayMenu == null) return;
+        var theme = App.Config.GetValue("Settings", "Theme", "Light");
+        bool isDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        _trayMenu.Renderer = new ModernMenuRenderer(isDark);
+    }
+
+    private void RestoreWindow()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        ShowInTaskbar = true;
+        Activate();
+    }
+
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string mode = App.Config.GetValue("Settings", "Mode", "Whitelist");
+            _isWhitelistMode = mode.Equals("Whitelist", StringComparison.OrdinalIgnoreCase);
+            UpdateModeButtonLabel();
+
+            bool startOnLogin = bool.TryParse(App.Config.GetValue("Settings", "StartOnLogin", "false"), out bool sol) && sol;
+            ChkStartOnLogin.IsChecked = startOnLogin;
+
+            StatusLabel.Text = "Synchronizing backup rules from firecon.ini...";
+            int restored = await Task.Run(() => _engine.SyncStoredRulesFromConfig());
+
+            StatusLabel.Text = "Applying configured firewall policy...";
+            var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
+
+            await ReloadRulesAsync();
+            _watchdogTimer.Start();
+
+            StatusLabel.Text = _isWhitelistMode
+                ? $"Whitelist Active: Restored {restored} rules. Suppressed {affected} unapproved rules."
+                : $"Blacklist Active: Restored {restored} rules. Operating permissively.";
+
+            TrimWorkingSet();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Startup error: {ex.Message}\n\nEnsure this application is run as Administrator.",
+                            "Initialization Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task ReloadRulesAsync()
+    {
+        _allRules = await Task.Run(() => _engine.GetAllRules());
+        ApplyFilter();
+        StatsLabel.Text = $"Total Outbound: {_allRules.Count(r => r.Direction == "Outbound")} | Total Inbound: {_allRules.Count(r => r.Direction == "Inbound")}";
+        TrimWorkingSet();
+    }
+
+    private void ApplyFilter()
+    {
+        var filter = SearchBox.Text.Trim();
+        var currentTab = (RulesTabControl.SelectedItem as TabItem)?.Header?.ToString() ?? "Outbound Rules";
+
+        if (currentTab.Contains("Blocked")) return;
+
+        bool isOutbound = currentTab.Contains("Outbound");
+        var targetList = _allRules.Where(r => isOutbound ? r.Direction == "Outbound" : r.Direction == "Inbound");
+
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            targetList = targetList.Where(r =>
+                r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                r.ApplicationName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                r.LocalPorts.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var result = targetList.ToList();
+        if (isOutbound) OutboundGrid.ItemsSource = result;
+        else InboundGrid.ItemsSource = result;
+    }
+
+    private DataGrid GetActiveGrid() =>
+        RulesTabControl.SelectedIndex == 0 ? OutboundGrid : InboundGrid;
+
+    private List<FirewallRuleModel> GetSelectedRules() =>
+        GetActiveGrid().SelectedItems.Cast<FirewallRuleModel>().ToList();
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
+
+    private void RulesTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source is TabControl) ApplyFilter();
+    }
+
+    private async void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        StatusLabel.Text = "Refreshing rules...";
+        await ReloadRulesAsync();
+        StatusLabel.Text = "Rules updated.";
+    }
+
+    private void ModeToggle_Click(object sender, RoutedEventArgs e) => ToggleMode();
+
+    private async void ToggleMode()
+    {
+        _isWhitelistMode = !_isWhitelistMode;
+        UpdateModeButtonLabel();
+
+        StatusLabel.Text = _isWhitelistMode
+            ? "Switching to Whitelist: Blocking unapproved outbound traffic..."
+            : "Switching to Blacklist: Allowing outbound traffic and restoring rules...";
+
+        var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
+        await ReloadRulesAsync();
+
+        StatusLabel.Text = _isWhitelistMode
+            ? $"Whitelist Mode Active. Default Outbound: Blocked. Suppressed {affected} rules."
+            : $"Blacklist Mode Active. Default Outbound: Allowed. Restored {affected} rules.";
+    }
+
+    private void UpdateModeButtonLabel()
+    {
+        string modeLabel = GetModeText();
+        ModeToggleButton.Content = modeLabel;
+        if (_trayModeMenuItem != null)
+        {
+            _trayModeMenuItem.Text = modeLabel;
+        }
+        if (_notifyIcon != null)
+        {
+            _notifyIcon.Text = $"Firewall Console - {(_isWhitelistMode ? "Whitelist" : "Blacklist")}";
+        }
+    }
+
+    private void ChkStartOnLogin_Changed(object sender, RoutedEventArgs e)
+    {
+        bool isChecked = ChkStartOnLogin.IsChecked ?? false;
+        App.Config.SetValue("Settings", "StartOnLogin", isChecked.ToString().ToLowerInvariant());
+        App.Config.Save(_engine.ConfigPath);
+
+        Task.Run(() => SetStartupOnLogin(isChecked));
+    }
+
+    private static void SetStartupOnLogin(bool enable)
+    {
+        try
+        {
+            string exePath = Process.GetCurrentProcess().MainModule?.FileName 
+                             ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.exe");
+            const string taskName = "FirewallConsole_Startup";
+
+            if (enable)
+            {
+                var psi = new ProcessStartInfo("schtasks.exe", $"/Create /TN \"{taskName}\" /TR \"\\\"{exePath}\\\" --startup\" /SC ONLOGON /RL HIGHEST /F")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var p = Process.Start(psi);
+                p?.WaitForExit(2000);
+            }
+            else
+            {
+                var psi = new ProcessStartInfo("schtasks.exe", $"/Delete /TN \"{taskName}\" /F")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var p = Process.Start(psi);
+                p?.WaitForExit(2000);
+            }
+        }
+        catch { }
+    }
+
+    private void NewRule_Click(object sender, RoutedEventArgs e) => OpenRuleDialog();
+
+    private void EditSelected_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count > 0)
+        {
+            OpenEditRuleDialog(selected[0]);
+        }
+    }
+
+    private void Grid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (GetSelectedRules() is { Count: > 0 } list)
+        {
+            OpenEditRuleDialog(list[0]);
+        }
+    }
+
+    private void BlockedGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (BlockedGrid.SelectedItem is BlockedConnectionModel blocked)
+        {
+            if (!string.IsNullOrWhiteSpace(blocked.ApplicationName) && blocked.ApplicationName != "Unknown")
+            {
+                OpenRuleDialog(blocked.ApplicationName, blocked.Direction, blocked.Protocol);
+            }
+        }
+    }
+
+    private async void OpenEditRuleDialog(FirewallRuleModel ruleToEdit)
+    {
+        var dialog = new RuleDialog(ruleToEdit) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.CreatedRule != null)
+        {
+            StatusLabel.Text = $"Updating rule '{dialog.CreatedRule.Name}'...";
+            await Task.Run(() => _engine.UpdateRule(ruleToEdit, dialog.CreatedRule));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' updated.";
+        }
+    }
+
+    private async void OpenRuleDialog(string? prefilledPath = null, string? direction = null, string? protocol = null)
+    {
+        var dialog = new RuleDialog(prefilledPath, direction, protocol) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.CreatedRule != null)
+        {
+            StatusLabel.Text = $"Creating rule '{dialog.CreatedRule.Name}'...";
+            await Task.Run(() => _engine.AddRule(dialog.CreatedRule));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' created.";
+        }
+    }
+
+    private async void Approve_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        StatusLabel.Text = $"Approving {selected.Count} rule(s)...";
+        await Task.Run(() =>
+        {
+            foreach (var r in selected)
+            {
+                _engine.ApproveRule(r);
+                _engine.SetRuleEnabled(r, true);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Approved and enabled {selected.Count} rule(s).";
+    }
+
+    private async void Revoke_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        StatusLabel.Text = $"Revoking {selected.Count} rule(s)...";
+        await Task.Run(() =>
+        {
+            foreach (var r in selected)
+            {
+                _engine.RevokeRule(r);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Revoked {selected.Count} rule(s).";
+    }
+
+    private async void ToggleEnable_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        await Task.Run(() =>
+        {
+            foreach (var r in selected)
+            {
+                _engine.SetRuleEnabled(r, !r.Enabled);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Toggled enabled state for {selected.Count} rule(s).";
+    }
+
+    private async void ToggleAction_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        await Task.Run(() =>
+        {
+            foreach (var r in selected) _engine.ToggleRuleAction(r);
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Toggled action for {selected.Count} rule(s).";
+    }
+
+    private async void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        var res = MessageBox.Show($"Permanently delete {selected.Count} rule(s)?", "Confirm Delete",
+                                  MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (res == MessageBoxResult.Yes)
+        {
+            StatusLabel.Text = $"Deleting {selected.Count} rule(s)...";
+            await Task.Run(() =>
+            {
+                foreach (var r in selected) _engine.DeleteRule(r);
+            });
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Deleted {selected.Count} rule(s).";
+        }
+    }
+
+    private void ToggleLogging_Click(object sender, RoutedEventArgs e)
+    {
+        if (_monitor.IsRunning)
+        {
+            _monitor.Stop();
+            BtnToggleLogging.Content = "Start Logging";
+            BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("SuccessBrush");
+            LoggingStatusText.Text = "Logging stopped. Monitoring paused.";
+            TrimWorkingSet();
+        }
+        else
+        {
+            _monitor.Start();
+            BtnToggleLogging.Content = "Stop Logging";
+            BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            LoggingStatusText.Text = "Active: Monitoring blocked connection events. Double-click row to create rule.";
+        }
+    }
+
+    private void ClearBlockedLog_Click(object sender, RoutedEventArgs e)
+    {
+        _blockedLogs.Clear();
+        TrimWorkingSet();
+    }
+
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        var current = App.Config.GetValue("Settings", "Theme", "Light");
+        var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
+        App.SetTheme(next);
+        UpdateTrayMenuTheme();
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
+            if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                e.Effects = System.Windows.DragDropEffects.Copy;
+                e.Handled = true;
+                return;
+            }
+        }
+        e.Effects = System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
+            if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenRuleDialog(files[0]);
+            }
+        }
+    }
+
+    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_isClosingFromTray)
+        {
+            // Close button "X" minimizes directly to the system tray
+            e.Cancel = true;
+            Hide();
+            ShowInTaskbar = false;
+            TrimWorkingSet();
+        }
+        else
+        {
+            _watchdogTimer.Stop();
+            _monitor.Dispose();
+            _notifyIcon?.Dispose();
+        }
+    }
+
+    private void ExitApp()
+    {
+        _isClosingFromTray = true;
+        Close();
+        Application.Current.Shutdown();
+    }
+}
+
+/// <summary>
+/// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes.
+/// Fully qualifies all GDI+ types to eliminate ambiguous collisions with WPF types.
+/// </summary>
+public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
+{
+    private readonly bool _isDark;
+
+    public ModernMenuRenderer(bool isDark) : base(new CustomColorTable(isDark))
+    {
+        _isDark = isDark;
+    }
+
+    protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
+    {
+        var g = e.Graphics;
+        var rect = new System.Drawing.Rectangle(System.Drawing.Point.Empty, e.Item.Size);
+
+        if (e.Item.Selected)
+        {
+            var hoverColor = _isDark ? System.Drawing.Color.FromArgb(42, 42, 48) : System.Drawing.Color.FromArgb(229, 231, 235);
+            using var b = new System.Drawing.SolidBrush(hoverColor);
+            g.FillRectangle(b, rect);
+        }
+        else
+        {
+            var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+            using var b = new System.Drawing.SolidBrush(bgColor);
+            g.FillRectangle(b, rect);
+        }
+    }
+
+    protected override void OnRenderItemText(WinForms.ToolStripItemTextRenderEventArgs e)
+    {
+        e.TextColor = _isDark ? System.Drawing.Color.FromArgb(244, 244, 246) : System.Drawing.Color.FromArgb(17, 24, 39);
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
+    {
+        var sepColor = _isDark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
+        using var pen = new System.Drawing.Pen(sepColor);
+        int y = e.Item.Height / 2;
+        e.Graphics.DrawLine(pen, 4, y, e.Item.Width - 4, y);
+    }
+
+    private class CustomColorTable : WinForms.ProfessionalColorTable
+    {
+        private readonly bool _dark;
+        public CustomColorTable(bool dark) => _dark = dark;
+
+        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
+    }
+}
