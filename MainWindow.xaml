@@ -1,0 +1,116 @@
+<Window x:Class="WinFirewallConsole.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Native Windows Firewall Console (.NET 10)" 
+        Height="720" Width="1100"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgBrush}">
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,15">
+            <StackPanel Orientation="Vertical">
+                <TextBlock Text="Firewall Sentinel &amp; Controller" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
+                <TextBlock Text="Lock unauthorized rules • Retain Core Networking • Ultra-low resource usage" 
+                           FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ThemeToggleButton" Content="🌓 Toggle Theme" Click="ThemeToggle_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,10,0"/>
+                <Button Content="🛡 Enforce Lockdown" Click="EnforceLockdown_Click" Background="{DynamicResource DangerBrush}"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Search & Quick Filters -->
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,15" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox" Grid.Column="0" VerticalContentAlignment="Center" Padding="8,4" 
+                         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextPrimary}" 
+                         BorderBrush="{DynamicResource BorderBrush}" TextChanged="SearchBox_TextChanged"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                    <Button Content="Approve Selected" Click="Approve_Click" Margin="0,0,5,0" Background="{DynamicResource SuccessBrush}"/>
+                    <Button Content="Revoke Selected" Click="Revoke_Click" Margin="0,0,5,0" Background="{DynamicResource DangerBrush}"/>
+                    <Button Content="Refresh" Click="Refresh_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Rules DataGrid -->
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+            <DataGrid x:Name="RulesGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                      Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                      BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
+                      Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Padding" Value="10,8"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                    </Style>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="8,4"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridCell">
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter />
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="Active" Binding="{Binding Enabled}" Width="65"/>
+                    <DataGridTextColumn Header="Rule Name" Binding="{Binding Name}" Width="250"/>
+                    <DataGridTextColumn Header="Approved" Binding="{Binding IsApproved}" Width="90"/>
+                    <DataGridTextColumn Header="Core Net" Binding="{Binding IsCoreNetworking}" Width="80"/>
+                    <DataGridTextColumn Header="Dir" Binding="{Binding Direction}" Width="80"/>
+                    <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="70"/>
+                    <DataGridTextColumn Header="Grouping" Binding="{Binding Grouping}" Width="150"/>
+                    <DataGridTextColumn Header="Program" Binding="{Binding ApplicationName}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Status Bar -->
+        <DockPanel Grid.Row="3" Margin="0,10,0,0">
+            <TextBlock x:Name="StatusLabel" Text="Ready" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+            <TextBlock x:Name="StatsLabel" Text="Rules: 0" HorizontalAlignment="Right" Foreground="{DynamicResource TextSecondary}" FontSize="12"/>
+        </DockPanel>
+    </Grid>
+</Window>
