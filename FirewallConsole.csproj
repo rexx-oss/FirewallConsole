@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="icon.png" />
   </ItemGroup>
 
