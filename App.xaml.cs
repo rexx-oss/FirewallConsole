@@ -23,15 +23,15 @@ public partial class App : Application
         var settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
         Settings.Load(settingsPath);
 
-        string theme = Settings.GetValue("Appearance", "Theme", "Dark");
+        string theme = Settings.GetValue("Appearance", "Theme", "Light");
         SetTheme(theme);
     }
 
     public static void SetTheme(string theme)
     {
-        var dictUri = theme.Equals("Light", StringComparison.OrdinalIgnoreCase)
-            ? "Themes/LightTheme.xaml"
-            : "Themes/DarkTheme.xaml";
+        var dictUri = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+            ? "Themes/DarkTheme.xaml"
+            : "Themes/LightTheme.xaml";
 
         var resourceDict = new ResourceDictionary { Source = new Uri(dictUri, UriKind.Relative) };
         Current.Resources.MergedDictionaries.Clear();
