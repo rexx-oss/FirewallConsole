@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,6 +14,7 @@ public partial class MainWindow : Window
 {
     private readonly FirewallEngine _engine = new();
     private List<FirewallRuleModel> _allRules = new();
+    private bool _isWhitelistMode = true;
 
     public MainWindow()
     {
@@ -24,93 +26,207 @@ public partial class MainWindow : Window
     {
         try
         {
-            var enforceStartup = App.Settings.GetValue("Policy", "EnforceOnStartup", "true");
-            if (bool.TryParse(enforceStartup, out bool enforce) && enforce)
-            {
-                StatusLabel.Text = "Applying startup policy...";
-                var (disabled, retained) = await Task.Run(() => _engine.EnforceLockdownPolicy());
-                StatusLabel.Text = $"Startup Enforce: Disabled {disabled} rules, retained {retained}.";
-            }
+            // Read configured mode (default to Whitelist mode)
+            string mode = App.Settings.GetValue("Policy", "Mode", "Whitelist");
+            _isWhitelistMode = mode.Equals("Whitelist", StringComparison.OrdinalIgnoreCase);
+            UpdateModeButtonLabel();
+
+            // Enforce on startup immediately: disables unapproved allow rules
+            StatusLabel.Text = "Synchronizing and suppressing unapproved allow rules...";
+            var (disabled, retained) = await Task.Run(() => _engine.EnforceMode(_isWhitelistMode));
 
             await ReloadRulesAsync();
+            StatusLabel.Text = _isWhitelistMode
+                ? $"Whitelist Active: Disabled {disabled} unapproved allow rules. Retained {retained} rules."
+                : "Blacklist Mode Active: Operating permissively.";
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Startup initialization error: {ex.Message}\n\nMake sure to run as Administrator.", 
-                            "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            StatusLabel.Text = "Failed to communicate with Windows Firewall.";
+            MessageBox.Show($"Startup error: {ex.Message}\n\nEnsure this application is run as Administrator.",
+                            "Initialization Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private async Task ReloadRulesAsync()
     {
-        StatusLabel.Text = "Querying Windows Firewall COM interface...";
         _allRules = await Task.Run(() => _engine.GetAllRules());
         ApplyFilter();
-        StatsLabel.Text = $"Total Rules: {_allRules.Count}";
-        StatusLabel.Text = "Rules loaded and synchronized.";
+        StatsLabel.Text = $"Total Inbound: {_allRules.Count(r => r.Direction == "Inbound")} | Total Outbound: {_allRules.Count(r => r.Direction == "Outbound")}";
     }
 
     private void ApplyFilter()
     {
         var filter = SearchBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(filter))
+        var currentTab = (RulesTabControl.SelectedItem as TabItem)?.Header?.ToString() ?? "Inbound Rules";
+        bool isInbound = currentTab.Contains("Inbound");
+
+        var targetList = _allRules.Where(r => isInbound ? r.Direction == "Inbound" : r.Direction == "Outbound");
+
+        if (!string.IsNullOrWhiteSpace(filter))
         {
-            RulesGrid.ItemsSource = _allRules;
-        }
-        else
-        {
-            RulesGrid.ItemsSource = _allRules.Where(r => 
+            targetList = targetList.Where(r =>
                 r.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                r.Grouping.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                r.ApplicationName.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+                r.ApplicationName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                r.LocalPorts.Contains(filter, StringComparison.OrdinalIgnoreCase));
         }
+
+        var result = targetList.ToList();
+        if (isInbound) InboundGrid.ItemsSource = result;
+        else OutboundGrid.ItemsSource = result;
     }
+
+    private DataGrid GetActiveGrid() =>
+        RulesTabControl.SelectedIndex == 0 ? InboundGrid : OutboundGrid;
+
+    private FirewallRuleModel? GetSelectedRule() =>
+        GetActiveGrid().SelectedItem as FirewallRuleModel;
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await ReloadRulesAsync();
-
-    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    private void RulesTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var currentTheme = App.Settings.GetValue("Appearance", "Theme", "Dark");
-        var targetTheme = currentTheme.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";
-        App.SetTheme(targetTheme);
+        if (e.Source is TabControl) ApplyFilter();
     }
 
-    private async void EnforceLockdown_Click(object sender, RoutedEventArgs e)
+    private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
-            "This will immediately DISABLE all rules that are NOT approved or part of 'Core Networking'. Proceed?",
-            "Confirm Firewall Lockdown",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+        StatusLabel.Text = "Refreshing firewall rules...";
+        await ReloadRulesAsync();
+        StatusLabel.Text = "Refreshed.";
+    }
 
-        if (result == MessageBoxResult.Yes)
+    private async void ModeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _isWhitelistMode = !_isWhitelistMode;
+        App.Settings.SetValue("Policy", "Mode", _isWhitelistMode ? "Whitelist" : "Blacklist");
+        App.Settings.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini"));
+        UpdateModeButtonLabel();
+
+        if (_isWhitelistMode)
         {
-            StatusLabel.Text = "Enforcing lockdown...";
-            var (disabled, retained) = await Task.Run(() => _engine.EnforceLockdownPolicy());
+            StatusLabel.Text = "Enforcing Whitelist mode...";
+            var (disabled, retained) = await Task.Run(() => _engine.EnforceMode(true));
             await ReloadRulesAsync();
-            MessageBox.Show($"Lockdown finished!\n\nDisabled rules: {disabled}\nRetained valid rules: {retained}",
-                "Lockdown Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Whitelist Mode engaged!\n\nDisabled {disabled} unapproved allow rules.\nRetained {retained} rules.",
+                            "Whitelist Active", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            StatusLabel.Text = "Blacklist Mode active. Unapproved allow rules are not auto-suppressed.";
+        }
+    }
+
+    private void UpdateModeButtonLabel()
+    {
+        ModeToggleButton.Content = _isWhitelistMode ? "🛡 Mode: Whitelist (Strict)" : "🔓 Mode: Blacklist (Permissive)";
+    }
+
+    private void NewRule_Click(object sender, RoutedEventArgs e) => OpenRuleDialog();
+
+    private async void OpenRuleDialog(string? prefilledPath = null)
+    {
+        var dialog = new RuleDialog(prefilledPath) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.CreatedRule != null)
+        {
+            StatusLabel.Text = $"Creating rule '{dialog.CreatedRule.Name}'...";
+            await Task.Run(() => _engine.AddRule(dialog.CreatedRule));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' added successfully.";
         }
     }
 
     private async void Approve_Click(object sender, RoutedEventArgs e)
     {
-        if (RulesGrid.SelectedItem is FirewallRuleModel selected)
+        if (GetSelectedRule() is { } rule)
         {
-            await Task.Run(() => _engine.ApproveRule(selected.Name));
+            await Task.Run(() =>
+            {
+                _engine.ApproveRule(rule.Name);
+                _engine.SetRuleEnabled(rule.Name, true);
+            });
             await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{rule.Name}' approved and enabled.";
         }
     }
 
     private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
-        if (RulesGrid.SelectedItem is FirewallRuleModel selected)
+        if (GetSelectedRule() is { } rule)
         {
-            await Task.Run(() => _engine.RevokeRule(selected.Name));
+            await Task.Run(() => _engine.RevokeRule(rule.Name));
             await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{rule.Name}' unapproved.";
+        }
+    }
+
+    private async void ToggleEnable_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedRule() is { } rule)
+        {
+            bool newState = !rule.Enabled;
+            await Task.Run(() => _engine.SetRuleEnabled(rule.Name, newState));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{rule.Name}' is now {(newState ? "Enabled" : "Disabled")}.";
+        }
+    }
+
+    private async void ToggleAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedRule() is { } rule)
+        {
+            await Task.Run(() => _engine.ToggleRuleAction(rule.Name));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{rule.Name}' action toggled.";
+        }
+    }
+
+    private async void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedRule() is { } rule)
+        {
+            var res = MessageBox.Show($"Permanently delete rule '{rule.Name}'?", "Confirm Delete",
+                                      MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (res == MessageBoxResult.Yes)
+            {
+                await Task.Run(() => _engine.DeleteRule(rule.Name));
+                await ReloadRulesAsync();
+                StatusLabel.Text = $"Rule '{rule.Name}' deleted.";
+            }
+        }
+    }
+
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        var current = App.Settings.GetValue("Appearance", "Theme", "Dark");
+        var next = current.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";
+        App.SetTheme(next);
+    }
+
+    private void Window_DragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                e.Effects = DragDropEffects.Copy;
+                e.Handled = true;
+                return;
+            }
+        }
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenRuleDialog(files[0]);
+            }
         }
     }
 }
