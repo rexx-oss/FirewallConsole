@@ -26,12 +26,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Read configured mode (default to Whitelist mode)
             string mode = App.Settings.GetValue("Policy", "Mode", "Whitelist");
             _isWhitelistMode = mode.Equals("Whitelist", StringComparison.OrdinalIgnoreCase);
             UpdateModeButtonLabel();
 
-            // Enforce on startup immediately: disables unapproved allow rules
             StatusLabel.Text = "Synchronizing and suppressing unapproved allow rules...";
             var (disabled, retained) = await Task.Run(() => _engine.EnforceMode(_isWhitelistMode));
 
@@ -78,8 +76,11 @@ public partial class MainWindow : Window
     private DataGrid GetActiveGrid() =>
         RulesTabControl.SelectedIndex == 0 ? InboundGrid : OutboundGrid;
 
-    private FirewallRuleModel? GetSelectedRule() =>
-        GetActiveGrid().SelectedItem as FirewallRuleModel;
+    private List<FirewallRuleModel> GetSelectedRules()
+    {
+        var grid = GetActiveGrid();
+        return grid.SelectedItems.Cast<FirewallRuleModel>().ToList();
+    }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
@@ -137,68 +138,113 @@ public partial class MainWindow : Window
 
     private async void Approve_Click(object sender, RoutedEventArgs e)
     {
-        if (GetSelectedRule() is { } rule)
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        StatusLabel.Text = $"Approving {selected.Count} rule(s)...";
+        await Task.Run(() =>
         {
-            await Task.Run(() =>
+            foreach (var r in selected)
             {
-                _engine.ApproveRule(rule.Name);
-                _engine.SetRuleEnabled(rule.Name, true);
-            });
-            await ReloadRulesAsync();
-            StatusLabel.Text = $"Rule '{rule.Name}' approved and enabled.";
-        }
+                _engine.ApproveRule(r);
+                _engine.SetRuleEnabled(r, true);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Approved and enabled {selected.Count} rule(s).";
     }
 
     private async void Revoke_Click(object sender, RoutedEventArgs e)
     {
-        if (GetSelectedRule() is { } rule)
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        StatusLabel.Text = $"Revoking {selected.Count} rule(s)...";
+        await Task.Run(() =>
         {
-            await Task.Run(() => _engine.RevokeRule(rule.Name));
-            await ReloadRulesAsync();
-            StatusLabel.Text = $"Rule '{rule.Name}' unapproved.";
-        }
+            foreach (var r in selected)
+            {
+                _engine.RevokeRule(r);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Revoked {selected.Count} rule(s).";
     }
 
-    private async void ToggleEnable_Click(object sender, RoutedEventArgs e)
+    private async void Enable_Click(object sender, RoutedEventArgs e)
     {
-        if (GetSelectedRule() is { } rule)
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        await Task.Run(() =>
         {
-            bool newState = !rule.Enabled;
-            await Task.Run(() => _engine.SetRuleEnabled(rule.Name, newState));
-            await ReloadRulesAsync();
-            StatusLabel.Text = $"Rule '{rule.Name}' is now {(newState ? "Enabled" : "Disabled")}.";
-        }
+            foreach (var r in selected)
+            {
+                _engine.SetRuleEnabled(r, true);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Enabled {selected.Count} rule(s).";
+    }
+
+    private async void Disable_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        await Task.Run(() =>
+        {
+            foreach (var r in selected)
+            {
+                _engine.SetRuleEnabled(r, false);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Disabled {selected.Count} rule(s).";
     }
 
     private async void ToggleAction_Click(object sender, RoutedEventArgs e)
     {
-        if (GetSelectedRule() is { } rule)
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        await Task.Run(() =>
         {
-            await Task.Run(() => _engine.ToggleRuleAction(rule.Name));
-            await ReloadRulesAsync();
-            StatusLabel.Text = $"Rule '{rule.Name}' action toggled.";
-        }
+            foreach (var r in selected)
+            {
+                _engine.ToggleRuleAction(r);
+            }
+        });
+        await ReloadRulesAsync();
+        StatusLabel.Text = $"Toggled action for {selected.Count} rule(s).";
     }
 
     private async void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (GetSelectedRule() is { } rule)
+        var selected = GetSelectedRules();
+        if (selected.Count == 0) return;
+
+        var res = MessageBox.Show($"Permanently delete {selected.Count} selected rule(s)?", "Confirm Delete",
+                                  MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (res == MessageBoxResult.Yes)
         {
-            var res = MessageBox.Show($"Permanently delete rule '{rule.Name}'?", "Confirm Delete",
-                                      MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (res == MessageBoxResult.Yes)
+            StatusLabel.Text = $"Deleting {selected.Count} rule(s)...";
+            await Task.Run(() =>
             {
-                await Task.Run(() => _engine.DeleteRule(rule.Name));
-                await ReloadRulesAsync();
-                StatusLabel.Text = $"Rule '{rule.Name}' deleted.";
-            }
+                foreach (var r in selected)
+                {
+                    _engine.DeleteRule(r);
+                }
+            });
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Deleted {selected.Count} rule(s).";
         }
     }
 
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
-        var current = App.Settings.GetValue("Appearance", "Theme", "Dark");
-        var next = current.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? "Light" : "Dark";
+        var current = App.Settings.GetValue("Appearance", "Theme", "Light");
+        var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
     }
 
