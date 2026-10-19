@@ -9,9 +9,8 @@ namespace FirewallConsole;
 public partial class RuleDialog : Window
 {
     public FirewallRuleModel? CreatedRule { get; private set; }
-    private readonly bool _isEditMode;
 
-    public RuleDialog(string? prefilledPath = null)
+    public RuleDialog(string? prefilledPath = null, string? direction = null, string? protocol = null)
     {
         InitializeComponent();
         if (!string.IsNullOrWhiteSpace(prefilledPath))
@@ -19,12 +18,19 @@ public partial class RuleDialog : Window
             TxtAppPath.Text = prefilledPath;
             TxtName.Text = Path.GetFileNameWithoutExtension(prefilledPath);
         }
+        if (!string.IsNullOrWhiteSpace(direction))
+        {
+            SelectComboValue(CmbDirection, direction);
+        }
+        if (!string.IsNullOrWhiteSpace(protocol))
+        {
+            SelectComboValue(CmbProtocol, protocol);
+        }
     }
 
     public RuleDialog(FirewallRuleModel existingRule)
     {
         InitializeComponent();
-        _isEditMode = true;
 
         DialogTitle.Text = $"Edit Rule: {existingRule.Name}";
         BtnSave.Content = "Save Changes";
