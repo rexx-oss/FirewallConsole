@@ -29,7 +29,6 @@ public class FirewallEngine
     public static bool IsCoreNetworkingGroup(string? grouping)
     {
         if (string.IsNullOrWhiteSpace(grouping)) return false;
-        // Core Networking is represented by '@FirewallAPI.dll,-25000' or localized 'Core Networking'
         return grouping.Contains("-25000", StringComparison.OrdinalIgnoreCase) ||
                grouping.Contains("Core Networking", StringComparison.OrdinalIgnoreCase);
     }
