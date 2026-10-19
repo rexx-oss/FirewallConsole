@@ -14,4 +14,8 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Resource Include="icon.png" />
+  </ItemGroup>
+
 </Project>
