@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FirewallConsole.Firewall;
 using Application = System.Windows.Application;
@@ -26,7 +27,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        InitializeTray();
+        InitializeTrayAndIcons();
         Loaded += MainWindow_Loaded;
 
         _watchdogTimer.Interval = TimeSpan.FromSeconds(10);
@@ -43,7 +44,7 @@ public partial class MainWindow : Window
         };
     }
 
-    private void InitializeTray()
+    private void InitializeTrayAndIcons()
     {
         _notifyIcon = new System.Windows.Forms.NotifyIcon
         {
@@ -51,33 +52,51 @@ public partial class MainWindow : Window
             Visible = true
         };
 
-        var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
-        if (File.Exists(iconPath))
+        try
         {
-            try
+            System.Drawing.Bitmap? bmp = null;
+            var resUri = new Uri("pack://application:,,,/icon.png", UriKind.Absolute);
+            var streamInfo = Application.GetResourceStream(resUri);
+
+            if (streamInfo != null)
             {
-                using var bmp = new System.Drawing.Bitmap(iconPath);
-                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(bmp.GetHicon());
+                using var mem = new MemoryStream();
+                streamInfo.Stream.CopyTo(mem);
+                mem.Position = 0;
+                bmp = new System.Drawing.Bitmap(mem);
+                mem.Position = 0;
+                this.Icon = BitmapFrame.Create(mem, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
             }
-            catch
+            else
             {
-                _notifyIcon.Icon = System.Drawing.SystemIcons.Shield;
+                var loosePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
+                if (File.Exists(loosePath))
+                {
+                    bmp = new System.Drawing.Bitmap(loosePath);
+                    this.Icon = new BitmapImage(new Uri(loosePath, UriKind.Absolute));
+                }
+            }
+
+            if (bmp != null)
+            {
+                IntPtr hIcon = bmp.GetHicon();
+                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+            }
+            else
+            {
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
             }
         }
-        else
+        catch
         {
-            _notifyIcon.Icon = System.Drawing.SystemIcons.Shield;
+            _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
         }
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
-        var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
-        var toggleItem = new System.Windows.Forms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode));
-        var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
-
-        menu.Items.Add(openItem);
-        menu.Items.Add(toggleItem);
+        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow()));
+        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode)));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add(exitItem);
+        menu.Items.Add(new System.Windows.Forms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp)));
 
         _notifyIcon.ContextMenuStrip = menu;
         _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
@@ -109,8 +128,8 @@ public partial class MainWindow : Window
             _watchdogTimer.Start();
 
             StatusLabel.Text = _isWhitelistMode
-                ? $"Whitelist Active: Suppressed {affected} unapproved allow rules. Retained {retained} rules."
-                : $"Blacklist Active: Restored {affected} rules. Operating permissively.";
+                ? $"Whitelist Active: Default Outbound Blocked. Suppressed {affected} unapproved allow rules."
+                : $"Blacklist Active: Default Outbound Allowed. Restored {affected} rules.";
         }
         catch (Exception ex)
         {
@@ -175,20 +194,20 @@ public partial class MainWindow : Window
         UpdateModeButtonLabel();
 
         StatusLabel.Text = _isWhitelistMode
-            ? "Switching to Whitelist: Suppressing unapproved allow rules..."
-            : "Switching to Blacklist: Restoring allow rules...";
+            ? "Switching to Whitelist: Blocking unapproved outbound traffic..."
+            : "Switching to Blacklist: Allowing outbound traffic and restoring rules...";
 
         var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
         await ReloadRulesAsync();
 
         if (_isWhitelistMode)
         {
-            MessageBox.Show($"Whitelist Mode Active!\n\nSuppressed {affected} unapproved allow rules.\nRetained {retained} rules.",
+            MessageBox.Show($"Whitelist Mode Active!\n\nDefault Outbound: BLOCKED\nSuppressed allow rules: {affected}\nRetained valid rules: {retained}",
                             "Whitelist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
         {
-            MessageBox.Show($"Blacklist Mode Active!\n\nRestored {affected} rules back to active state.",
+            MessageBox.Show($"Blacklist Mode Active!\n\nDefault Outbound: ALLOWED\nRestored rules: {affected}",
                             "Blacklist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
