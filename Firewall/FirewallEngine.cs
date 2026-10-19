@@ -103,24 +103,32 @@ public class FirewallEngine
                     IsApproved = isApproved
                 });
             }
-            catch
-            {
-                // Continue scanning even if an individual rule is inaccessible
-            }
+            catch { }
         }
         return list;
     }
 
-    /// <summary>
-    /// Strict Whitelist Mode: Disables unapproved allow rules and tracks them in [AutoDisabled].
-    /// Permissive Blacklist Mode: Restores previously auto-disabled rules.
-    /// </summary>
     public (int affectedCount, int retainedCount) SetOperatingMode(bool whitelistMode)
     {
         dynamic policy = GetPolicy();
-        dynamic rules = policy.Rules;
         int affected = 0;
         int retained = 0;
+
+        // 1. Configure default outbound firewall policy
+        // Whitelist = BLOCK all outbound traffic by default (strict default-deny)
+        // Blacklist = ALLOW outbound traffic by default (permissive standard Windows mode)
+        int defaultOutbound = whitelistMode ? 0 : 1;
+        try
+        {
+            policy.DefaultOutboundAction[1] = defaultOutbound; // Domain
+            policy.DefaultOutboundAction[2] = defaultOutbound; // Private
+            policy.DefaultOutboundAction[4] = defaultOutbound; // Public
+        }
+        catch { }
+
+        // 2. Process rules in a single pass
+        dynamic rules = policy.Rules;
+        var autoDisabledMap = new HashSet<string>(_config.GetKeys("AutoDisabled"), StringComparer.OrdinalIgnoreCase);
 
         if (whitelistMode)
         {
@@ -155,31 +163,23 @@ public class FirewallEngine
         }
         else
         {
-            // Restore rules that were suppressed by Whitelist mode
-            var autoDisabledKeys = new List<string>(_config.GetKeys("AutoDisabled"));
-            foreach (var key in autoDisabledKeys)
+            foreach (dynamic rule in rules)
             {
-                var parts = key.Split('|');
-                if (parts.Length != 2) continue;
-                string dirStr = parts[0];
-                string ruleName = parts[1];
-                int targetDir = dirStr.Equals("Inbound", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
-
-                foreach (dynamic rule in rules)
+                try
                 {
-                    try
+                    string name = rule.Name ?? "";
+                    string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                    string key = $"{direction}|{name}";
+
+                    if (autoDisabledMap.Contains(key))
                     {
-                        if (string.Equals((string)(rule.Name ?? ""), ruleName, StringComparison.OrdinalIgnoreCase) &&
-                            (int)rule.Direction == targetDir)
-                        {
-                            rule.Enabled = true;
-                            affected++;
-                        }
+                        rule.Enabled = true;
+                        affected++;
                     }
-                    catch { }
                 }
-                _config.RemoveKey("AutoDisabled", key);
+                catch { }
             }
+            _config.RemoveSection("AutoDisabled");
         }
 
         _config.SetValue("Settings", "Mode", whitelistMode ? "Whitelist" : "Blacklist");
