@@ -8,7 +8,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using FirewallConsole.Firewall;
-using WinForms = System.Windows.Forms;
+using Application = System.Windows.Application;
+using DataGrid = System.Windows.Controls.DataGrid;
+using DragEventArgs = System.Windows.DragEventArgs;
+using MessageBox = System.Windows.MessageBox;
 
 namespace FirewallConsole;
 
@@ -17,7 +20,7 @@ public partial class MainWindow : Window
     private readonly FirewallEngine _engine = new();
     private List<FirewallRuleModel> _allRules = new();
     private bool _isWhitelistMode = true;
-    private WinForms.NotifyIcon? _notifyIcon;
+    private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private readonly DispatcherTimer _watchdogTimer = new();
     private bool _isClosingFromTray = false;
 
@@ -27,7 +30,6 @@ public partial class MainWindow : Window
         InitializeTray();
         Loaded += MainWindow_Loaded;
 
-        // Periodic watchdog: In Whitelist mode, silently suppresses unauthorized allow rules every 10 seconds
         _watchdogTimer.Interval = TimeSpan.FromSeconds(10);
         _watchdogTimer.Tick += async (s, e) =>
         {
@@ -44,7 +46,7 @@ public partial class MainWindow : Window
 
     private void InitializeTray()
     {
-        _notifyIcon = new WinForms.NotifyIcon
+        _notifyIcon = new System.Windows.Forms.NotifyIcon
         {
             Text = "Firewall Console",
             Visible = true
@@ -68,14 +70,14 @@ public partial class MainWindow : Window
             _notifyIcon.Icon = SystemIcons.Shield;
         }
 
-        var menu = new WinForms.ContextMenuStrip();
-        var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
-        var toggleItem = new WinForms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode));
-        var exitItem = new WinForms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+        var openItem = new System.Windows.Forms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
+        var toggleItem = new System.Windows.Forms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode));
+        var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
 
         menu.Items.Add(openItem);
         menu.Items.Add(toggleItem);
-        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
 
         _notifyIcon.ContextMenuStrip = menu;
@@ -122,16 +124,16 @@ public partial class MainWindow : Window
     {
         _allRules = await Task.Run(() => _engine.GetAllRules());
         ApplyFilter();
-        StatsLabel.Text = $"Total Inbound: {_allRules.Count(r => r.Direction == "Inbound")} | Total Outbound: {_allRules.Count(r => r.Direction == "Outbound")}";
+        StatsLabel.Text = $"Total Outbound: {_allRules.Count(r => r.Direction == "Outbound")} | Total Inbound: {_allRules.Count(r => r.Direction == "Inbound")}";
     }
 
     private void ApplyFilter()
     {
         var filter = SearchBox.Text.Trim();
-        var currentTab = (RulesTabControl.SelectedItem as TabItem)?.Header?.ToString() ?? "Inbound Rules";
-        bool isInbound = currentTab.Contains("Inbound");
+        var currentTab = (RulesTabControl.SelectedItem as TabItem)?.Header?.ToString() ?? "Outbound Rules";
+        bool isOutbound = currentTab.Contains("Outbound");
 
-        var targetList = _allRules.Where(r => isInbound ? r.Direction == "Inbound" : r.Direction == "Outbound");
+        var targetList = _allRules.Where(r => isOutbound ? r.Direction == "Outbound" : r.Direction == "Inbound");
 
         if (!string.IsNullOrWhiteSpace(filter))
         {
@@ -142,12 +144,12 @@ public partial class MainWindow : Window
         }
 
         var result = targetList.ToList();
-        if (isInbound) InboundGrid.ItemsSource = result;
-        else OutboundGrid.ItemsSource = result;
+        if (isOutbound) OutboundGrid.ItemsSource = result;
+        else InboundGrid.ItemsSource = result;
     }
 
     private DataGrid GetActiveGrid() =>
-        RulesTabControl.SelectedIndex == 0 ? InboundGrid : OutboundGrid;
+        RulesTabControl.SelectedIndex == 0 ? OutboundGrid : InboundGrid;
 
     private List<FirewallRuleModel> GetSelectedRules() =>
         GetActiveGrid().SelectedItems.Cast<FirewallRuleModel>().ToList();
@@ -324,25 +326,25 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
-            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
             if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                e.Effects = DragDropEffects.Copy;
+                e.Effects = System.Windows.DragDropEffects.Copy;
                 e.Handled = true;
                 return;
             }
         }
-        e.Effects = DragDropEffects.None;
+        e.Effects = System.Windows.DragDropEffects.None;
         e.Handled = true;
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
         {
-            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
             if (files != null && files.Length > 0 && files[0].EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
                 OpenRuleDialog(files[0]);
@@ -363,7 +365,6 @@ public partial class MainWindow : Window
     {
         if (!_isClosingFromTray)
         {
-            // Minimize to system tray on window close
             e.Cancel = true;
             Hide();
             ShowInTaskbar = false;
