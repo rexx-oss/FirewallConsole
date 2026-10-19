@@ -4,12 +4,17 @@
     <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="HeaderBgBrush" Color="#E5E7EB"/>
     <SolidColorBrush x:Key="BorderBrush" Color="#D1D5DB"/>
+    <SolidColorBrush x:Key="ButtonBgBrush" Color="#F9FAFB"/>
+    <SolidColorBrush x:Key="ButtonHoverBrush" Color="#E5E7EB"/>
     <SolidColorBrush x:Key="TextPrimary" Color="#111827"/>
     <SolidColorBrush x:Key="TextSecondary" Color="#6B7280"/>
     <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
     <SolidColorBrush x:Key="AccentHover" Color="#1D4ED8"/>
     <SolidColorBrush x:Key="SuccessBrush" Color="#059669"/>
+    <SolidColorBrush x:Key="SuccessHover" Color="#047857"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#D97706"/>
     <SolidColorBrush x:Key="DangerBrush" Color="#DC2626"/>
+    <SolidColorBrush x:Key="DangerHover" Color="#B91C1C"/>
 
     <!-- DataGrid Styling -->
     <Style TargetType="DataGridColumnHeader">
