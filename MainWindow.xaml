@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Firewall Console (.NET 10)" 
-        Height="760" Width="1180"
+        Height="780" Width="1200"
         WindowStartupLocation="CenterScreen"
         Icon="icon.png"
         AllowDrop="True"
@@ -68,7 +68,7 @@
                 <Image Source="icon.png" Width="32" Height="32" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Orientation="Vertical">
                     <TextBlock Text="Firewall Console" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}"/>
-                    <TextBlock Text="Auto-suppress unapproved allow rules • Drag &amp; drop EXE anywhere to create rules" 
+                    <TextBlock Text="Auto-suppress unapproved allow rules • Double-click row to edit • Real-time drop monitor" 
                                FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
                 </StackPanel>
             </StackPanel>
@@ -95,6 +95,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
                     <Button Content="➕ New Rule" Click="NewRule_Click" Background="{DynamicResource AccentBrush}" Margin="0,0,6,0"/>
+                    <Button Content="✏ Edit Selected" Click="EditSelected_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
                     <Button Content="✔ Approve" Click="Approve_Click" Background="{DynamicResource SuccessBrush}" Margin="0,0,6,0"/>
                     <Button Content="✖ Revoke" Click="Revoke_Click" Background="{DynamicResource DangerBrush}" Margin="0,0,6,0"/>
                     <Button Content="Enable" Click="Enable_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,6,0"/>
@@ -106,12 +107,14 @@
             </Grid>
         </Border>
 
-        <!-- Tabs: Outbound Rules First, Inbound Rules Second -->
+        <!-- Main Tab Control -->
         <TabControl x:Name="RulesTabControl" Grid.Row="2" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="RulesTabControl_SelectionChanged">
+            <!-- Outbound Tab -->
             <TabItem Header="Outbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                              SelectionMode="Extended" SelectionUnit="FullRow"
+                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
+                              MouseDoubleClick="Grid_MouseDoubleClick"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                               Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
@@ -129,10 +132,12 @@
                 </Border>
             </TabItem>
 
+            <!-- Inbound Tab -->
             <TabItem Header="Inbound Rules">
                 <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="0,8,0,0">
                     <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                              SelectionMode="Extended" SelectionUnit="FullRow"
+                              IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
+                              MouseDoubleClick="Grid_MouseDoubleClick"
                               Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
                               BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
                               Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
@@ -148,6 +153,42 @@
                         </DataGrid.Columns>
                     </DataGrid>
                 </Border>
+            </TabItem>
+
+            <!-- Blocked Connections Tab -->
+            <TabItem Header="Blocked Connections">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BtnToggleLogging" Content="▶ Start Logging" Click="ToggleLogging_Click" Background="{DynamicResource SuccessBrush}" Margin="0,0,8,0"/>
+                            <Button Content="Clear Log" Click="ClearBlockedLog_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="LoggingStatusText" Text="Logging stopped. Click Start to monitor connection drops." 
+                                   Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </DockPanel>
+
+                    <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <DataGrid x:Name="BlockedGrid" AutoGenerateColumns="False" CanUserAddRows="False"
+                                  IsReadOnly="True" SelectionMode="Extended" SelectionUnit="FullRow"
+                                  Background="Transparent" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                                  BorderThickness="0" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
+                                  Foreground="{DynamicResource TextPrimary}" RowBackground="Transparent">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="85"/>
+                                <DataGridTextColumn Header="Dir" Binding="{Binding Direction}" Width="80"/>
+                                <DataGridTextColumn Header="Proto" Binding="{Binding Protocol}" Width="65"/>
+                                <DataGridTextColumn Header="Destination" Binding="{Binding Destination}" Width="160"/>
+                                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="160"/>
+                                <DataGridTextColumn Header="Application Path" Binding="{Binding ApplicationName}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+                </Grid>
             </TabItem>
         </TabControl>
 
