@@ -37,61 +37,66 @@ public class FirewallEngine
                grouping.Contains("Core Networking", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string GetRuleSectionName(string direction, string name) =>
-        $"Rule:{direction}:{name}";
+    private static string ConvertProtocol(int protoNum) => protoNum switch
+    {
+        6 => "TCP",
+        17 => "UDP",
+        1 => "ICMPv4",
+        58 => "ICMPv6",
+        _ => "Any"
+    };
 
     private static bool RuleMatches(dynamic rule, FirewallRuleModel target)
     {
-        if (!string.Equals((string)(rule.Name ?? ""), target.Name, StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        int dir = (int)rule.Direction;
-        int targetDir = target.Direction.Equals("Inbound", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
-        if (dir != targetDir)
-            return false;
-
+        string name = (string)(rule.Name ?? "");
+        string dir = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
         string app = (string)(rule.ApplicationName ?? "");
-        if (!string.Equals(app, target.ApplicationName, StringComparison.OrdinalIgnoreCase))
-            return false;
+        string proto = ConvertProtocol((int)rule.Protocol);
+        string lp = (string)(rule.LocalPorts ?? "*");
+        string rp = (string)(rule.RemotePorts ?? "*");
 
-        return true;
+        string ruleId = FirewallRuleModel.ComputeRuleId(name, dir, app, proto, lp, rp);
+        return string.Equals(ruleId, target.Id, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Restores full rule backups from firecon.ini into Windows Firewall if running on a new computer.
-    /// </summary>
     public int SyncStoredRulesFromConfig()
     {
         int restoredCount = 0;
         var existingRules = GetAllRules();
-        var existingMap = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var existingIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var r in existingRules)
         {
-            existingMap.Add($"{r.Direction}|{r.Name}");
+            existingIds.Add(r.Id);
         }
 
-        // Parse all sections starting with Rule:
         foreach (var line in File.Exists(_iniPath) ? File.ReadAllLines(_iniPath) : Array.Empty<string>())
         {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("[Rule:", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith(']'))
+            if (trimmed.StartsWith("[Rule_", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith(']'))
             {
                 string sec = trimmed[1..^1];
                 string name = _config.GetValue(sec, "Name");
                 string dir = _config.GetValue(sec, "Direction", "Outbound");
+                string app = _config.GetValue(sec, "ApplicationName", "");
+                string proto = _config.GetValue(sec, "Protocol", "Any");
+                string lp = _config.GetValue(sec, "LocalPorts", "*");
+                string rp = _config.GetValue(sec, "RemotePorts", "*");
 
-                if (!string.IsNullOrWhiteSpace(name) && !existingMap.Contains($"{dir}|{name}"))
+                string ruleId = FirewallRuleModel.ComputeRuleId(name, dir, app, proto, lp, rp);
+
+                if (!string.IsNullOrWhiteSpace(name) && !existingIds.Contains(ruleId))
                 {
                     var model = new FirewallRuleModel
                     {
+                        Id = ruleId,
                         Name = name,
                         Direction = dir,
                         Action = _config.GetValue(sec, "Action", "Allow"),
                         Enabled = bool.TryParse(_config.GetValue(sec, "Enabled", "True"), out bool en) && en,
-                        Protocol = _config.GetValue(sec, "Protocol", "Any"),
-                        LocalPorts = _config.GetValue(sec, "LocalPorts", "*"),
-                        RemotePorts = _config.GetValue(sec, "RemotePorts", "*"),
-                        ApplicationName = _config.GetValue(sec, "ApplicationName", ""),
+                        Protocol = proto,
+                        LocalPorts = lp,
+                        RemotePorts = rp,
+                        ApplicationName = app,
                         Profiles = _config.GetValue(sec, "Profiles", "All"),
                         IsApproved = bool.TryParse(_config.GetValue(sec, "IsApproved", "True"), out bool ap) && ap
                     };
@@ -121,33 +126,29 @@ public class FirewallEngine
                 string name = rule.Name ?? "";
                 string grouping = rule.Grouping ?? "";
                 string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                string app = rule.ApplicationName ?? "";
+                string protoStr = ConvertProtocol((int)rule.Protocol);
+                string lp = rule.LocalPorts ?? "*";
+                string rp = rule.RemotePorts ?? "*";
+
+                string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
+
                 bool isCore = IsCoreNetworking(grouping);
-
-                string sec = GetRuleSectionName(direction, name);
-                bool isApproved = isCore || _config.GetValue(sec, "IsApproved", "false") == "true";
-
-                int protoNum = (int)rule.Protocol;
-                string protoStr = protoNum switch
-                {
-                    6 => "TCP",
-                    17 => "UDP",
-                    1 => "ICMPv4",
-                    58 => "ICMPv6",
-                    _ => "Any"
-                };
+                bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
 
                 list.Add(new FirewallRuleModel
                 {
+                    Id = ruleId,
                     Name = name,
                     Description = rule.Description ?? "",
                     Grouping = grouping,
-                    ApplicationName = rule.ApplicationName ?? "",
+                    ApplicationName = app,
                     Enabled = rule.Enabled,
                     Direction = direction,
                     Action = ((int)rule.Action) == 1 ? "Allow" : "Block",
                     Protocol = protoStr,
-                    LocalPorts = rule.LocalPorts ?? "*",
-                    RemotePorts = rule.RemotePorts ?? "*",
+                    LocalPorts = lp,
+                    RemotePorts = rp,
                     LocalAddresses = rule.LocalAddresses ?? "*",
                     RemoteAddresses = rule.RemoteAddresses ?? "*",
                     Profiles = ((int)rule.Profiles) == 0x7FFFFFFF ? "All" : rule.Profiles.ToString(),
@@ -188,10 +189,15 @@ public class FirewallEngine
                     string name = rule.Name ?? "";
                     string grouping = rule.Grouping ?? "";
                     string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                    string app = rule.ApplicationName ?? "";
+                    string protoStr = ConvertProtocol((int)rule.Protocol);
+                    string lp = rule.LocalPorts ?? "*";
+                    string rp = rule.RemotePorts ?? "*";
+
+                    string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
 
                     bool isCore = IsCoreNetworking(grouping);
-                    string sec = GetRuleSectionName(direction, name);
-                    bool isApproved = isCore || _config.GetValue(sec, "IsApproved", "false") == "true";
+                    bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
 
                     if (isApproved)
                     {
@@ -200,7 +206,7 @@ public class FirewallEngine
                     else if ((bool)rule.Enabled)
                     {
                         rule.Enabled = false;
-                        _config.SetValue("AutoDisabled", $"{direction}|{name}", "true");
+                        _config.SetValue("AutoDisabled", ruleId, "true");
                         affected++;
                     }
                 }
@@ -215,9 +221,14 @@ public class FirewallEngine
                 {
                     string name = rule.Name ?? "";
                     string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
-                    string key = $"{direction}|{name}";
+                    string app = rule.ApplicationName ?? "";
+                    string protoStr = ConvertProtocol((int)rule.Protocol);
+                    string lp = rule.LocalPorts ?? "*";
+                    string rp = rule.RemotePorts ?? "*";
 
-                    if (autoDisabledMap.Contains(key))
+                    string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
+
+                    if (autoDisabledMap.Contains(ruleId))
                     {
                         rule.Enabled = true;
                         affected++;
@@ -277,6 +288,7 @@ public class FirewallEngine
         dynamic policy = GetPolicy();
         policy.Rules.Add(newRule);
 
+        model.Id = FirewallRuleModel.ComputeRuleId(model.Name, model.Direction, model.ApplicationName, model.Protocol, model.LocalPorts, model.RemotePorts);
         SaveRuleToConfig(model);
     }
 
@@ -288,7 +300,13 @@ public class FirewallEngine
 
     private void SaveRuleToConfig(FirewallRuleModel model)
     {
-        string sec = GetRuleSectionName(model.Direction, model.Name);
+        if (string.IsNullOrWhiteSpace(model.Id))
+        {
+            model.Id = FirewallRuleModel.ComputeRuleId(model.Name, model.Direction, model.ApplicationName, model.Protocol, model.LocalPorts, model.RemotePorts);
+        }
+
+        string sec = $"Rule_{model.Id}";
+        _config.SetValue(sec, "Id", model.Id);
         _config.SetValue(sec, "Name", model.Name);
         _config.SetValue(sec, "Direction", model.Direction);
         _config.SetValue(sec, "Action", model.Action);
@@ -299,6 +317,16 @@ public class FirewallEngine
         _config.SetValue(sec, "ApplicationName", model.ApplicationName);
         _config.SetValue(sec, "Profiles", model.Profiles);
         _config.SetValue(sec, "IsApproved", model.IsApproved.ToString());
+
+        if (model.IsApproved)
+        {
+            _config.SetValue("ApprovedRules", model.Id, "true");
+        }
+        else
+        {
+            _config.RemoveKey("ApprovedRules", model.Id);
+        }
+
         _config.Save(_iniPath);
     }
 
@@ -312,8 +340,8 @@ public class FirewallEngine
                 rule.Enabled = enabled;
             }
         }
-        string sec = GetRuleSectionName(target.Direction, target.Name);
-        _config.SetValue(sec, "Enabled", enabled.ToString());
+        target.Enabled = enabled;
+        _config.SetValue($"Rule_{target.Id}", "Enabled", enabled.ToString());
         _config.Save(_iniPath);
     }
 
@@ -330,22 +358,23 @@ public class FirewallEngine
                 newAction = currentAction == 1 ? "Block" : "Allow";
             }
         }
-        string sec = GetRuleSectionName(target.Direction, target.Name);
-        _config.SetValue(sec, "Action", newAction);
+        target.Action = newAction;
+        _config.SetValue($"Rule_{target.Id}", "Action", newAction);
         _config.Save(_iniPath);
     }
 
     public void ApproveRule(FirewallRuleModel target)
     {
         target.IsApproved = true;
+        _config.SetValue("ApprovedRules", target.Id, "true");
+        _config.RemoveKey("AutoDisabled", target.Id);
         SaveRuleToConfig(target);
-        _config.RemoveKey("AutoDisabled", $"{target.Direction}|{target.Name}");
-        _config.Save(_iniPath);
     }
 
     public void RevokeRule(FirewallRuleModel target)
     {
         target.IsApproved = false;
+        _config.RemoveKey("ApprovedRules", target.Id);
         SaveRuleToConfig(target);
 
         if (target.Action.Equals("Allow", StringComparison.OrdinalIgnoreCase))
@@ -363,9 +392,9 @@ public class FirewallEngine
         }
         catch { }
 
-        string sec = GetRuleSectionName(target.Direction, target.Name);
-        _config.RemoveSection(sec);
-        _config.RemoveKey("AutoDisabled", $"{target.Direction}|{target.Name}");
+        _config.RemoveSection($"Rule_{target.Id}");
+        _config.RemoveKey("ApprovedRules", target.Id);
+        _config.RemoveKey("AutoDisabled", target.Id);
         _config.Save(_iniPath);
     }
 }
