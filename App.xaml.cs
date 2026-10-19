@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using FirewallConsole.Storage;
 using Application = System.Windows.Application;
@@ -28,9 +29,9 @@ public partial class App : Application
         SetTheme(theme);
 
         var mainWindow = new MainWindow();
-        bool startMinimized = bool.TryParse(Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
+        bool isStartupLaunch = e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase);
 
-        if (startMinimized)
+        if (isStartupLaunch)
         {
             mainWindow.WindowState = WindowState.Minimized;
             mainWindow.ShowInTaskbar = false;
