@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using FirewallConsole.Storage;
 
 namespace FirewallConsole.Firewall;
@@ -24,12 +23,12 @@ public class FirewallEngine
                      ?? Type.GetTypeFromCLSID(new Guid("{E2B3C97F-6AE1-41AC-817A-F6F92166D7DD}"));
 
         if (type == null)
-            throw new PlatformNotSupportedException("Windows Firewall COM interface (HNetCfg.FwPolicy2) is not registered on this system.");
+            throw new PlatformNotSupportedException("Windows Firewall COM interface is not registered on this system.");
 
         return Activator.CreateInstance(type)!;
     }
 
-    public static bool IsCoreNetworkingGroup(string? grouping)
+    public static bool IsCoreNetworking(string? grouping)
     {
         if (string.IsNullOrWhiteSpace(grouping)) return false;
         return grouping.Contains("-25000", StringComparison.OrdinalIgnoreCase) ||
@@ -48,50 +47,164 @@ public class FirewallEngine
             {
                 string name = rule.Name ?? "";
                 string grouping = rule.Grouping ?? "";
-                bool isCore = IsCoreNetworkingGroup(grouping);
+                bool isCore = IsCoreNetworking(grouping);
                 bool isApproved = isCore || _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
+
+                int protoNum = (int)rule.Protocol;
+                string protoStr = protoNum switch
+                {
+                    6 => "TCP",
+                    17 => "UDP",
+                    1 => "ICMPv4",
+                    58 => "ICMPv6",
+                    _ => "Any"
+                };
 
                 list.Add(new FirewallRuleModel
                 {
                     Name = name,
+                    Description = rule.Description ?? "",
                     Grouping = grouping,
                     ApplicationName = rule.ApplicationName ?? "",
                     Enabled = rule.Enabled,
                     Direction = rule.Direction == 1 ? "Inbound" : "Outbound",
                     Action = rule.Action == 1 ? "Allow" : "Block",
-                    Protocol = rule.Protocol.ToString(),
+                    Protocol = protoStr,
                     LocalPorts = rule.LocalPorts ?? "*",
-                    IsApproved = isApproved,
-                    IsCoreNetworking = isCore
+                    RemotePorts = rule.RemotePorts ?? "*",
+                    LocalAddresses = rule.LocalAddresses ?? "*",
+                    RemoteAddresses = rule.RemoteAddresses ?? "*",
+                    Profiles = ((int)rule.Profiles) == 0x7FFFFFFF ? "All" : rule.Profiles.ToString(),
+                    IsApproved = isApproved
                 });
             }
             catch
             {
-                // Continue reading even if a single rule has non-standard parameters
+                // Continue scanning even if a single malformed rule is encountered
             }
         }
         return list;
     }
 
-    public void ApproveRule(string ruleName)
+    /// <summary>
+    /// Enforces mode: In Whitelist mode, automatically disables ONLY 'Allow' rules that are unapproved.
+    /// Block rules are never disabled. Core Networking Allow rules are retained.
+    /// </summary>
+    public (int disabledAllowRules, int retainedRules) EnforceMode(bool whitelistMode)
     {
-        _approvedRulesIni.SetValue("ApprovedRules", ruleName, "true");
-        _approvedRulesIni.Save(_rulesFilePath);
-        SetRuleEnabled(ruleName, true);
+        if (!whitelistMode) return (0, 0);
+
+        dynamic policy = GetPolicy();
+        dynamic rules = policy.Rules;
+        int disabledCount = 0;
+        int retainedCount = 0;
+
+        foreach (dynamic rule in rules)
+        {
+            try
+            {
+                int action = (int)rule.Action; // 1 = Allow, 0 = Block
+                if (action != 1)
+                {
+                    // Block rules remain untouched
+                    continue;
+                }
+
+                string name = rule.Name ?? "";
+                string grouping = rule.Grouping ?? "";
+                bool isCore = IsCoreNetworking(grouping);
+                bool isApproved = isCore || _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
+
+                if (isApproved)
+                {
+                    retainedCount++;
+                }
+                else
+                {
+                    if ((bool)rule.Enabled)
+                    {
+                        rule.Enabled = false;
+                        disabledCount++;
+                    }
+                }
+            }
+            catch
+            {
+                // Skip rules protected by Active Directory or system domain controllers
+            }
+        }
+
+        return (disabledCount, retainedCount);
     }
 
-    public void RevokeRule(string ruleName)
+    public void AddRule(FirewallRuleModel model)
     {
+        Type? ruleType = Type.GetTypeFromProgID("HNetCfg.FWRule");
+        if (ruleType == null)
+            throw new PlatformNotSupportedException("Cannot create HNetCfg.FWRule COM object.");
+
+        dynamic newRule = Activator.CreateInstance(ruleType)!;
+        newRule.Name = model.Name;
+        newRule.Description = model.Description;
+        if (!string.IsNullOrWhiteSpace(model.ApplicationName))
+            newRule.ApplicationName = model.ApplicationName;
+
+        newRule.Direction = model.Direction.Equals("Inbound", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+        newRule.Action = model.Action.Equals("Allow", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        newRule.Enabled = model.Enabled;
+
+        int protocol = model.Protocol.ToUpperInvariant() switch
+        {
+            "TCP" => 6,
+            "UDP" => 17,
+            "ICMPV4" => 1,
+            _ => 256 // Any
+        };
+        newRule.Protocol = protocol;
+
+        if (protocol is 6 or 17)
+        {
+            if (!string.IsNullOrWhiteSpace(model.LocalPorts) && model.LocalPorts != "*")
+                newRule.LocalPorts = model.LocalPorts;
+            if (!string.IsNullOrWhiteSpace(model.RemotePorts) && model.RemotePorts != "*")
+                newRule.RemotePorts = model.RemotePorts;
+        }
+
+        if (!string.IsNullOrWhiteSpace(model.LocalAddresses) && model.LocalAddresses != "*")
+            newRule.LocalAddresses = model.LocalAddresses;
+        if (!string.IsNullOrWhiteSpace(model.RemoteAddresses) && model.RemoteAddresses != "*")
+            newRule.RemoteAddresses = model.RemoteAddresses;
+
+        newRule.Profiles = model.Profiles.ToUpperInvariant() switch
+        {
+            "DOMAIN" => 1,
+            "PRIVATE" => 2,
+            "PUBLIC" => 4,
+            _ => 0x7FFFFFFF // All
+        };
+
+        dynamic policy = GetPolicy();
+        policy.Rules.Add(newRule);
+
+        if (model.IsApproved)
+        {
+            _approvedRulesIni.SetValue("ApprovedRules", model.Name, "true");
+            _approvedRulesIni.Save(_rulesFilePath);
+        }
+    }
+
+    public void DeleteRule(string ruleName)
+    {
+        dynamic policy = GetPolicy();
+        policy.Rules.Remove(ruleName);
         _approvedRulesIni.RemoveKey("ApprovedRules", ruleName);
         _approvedRulesIni.Save(_rulesFilePath);
-        SetRuleEnabled(ruleName, false);
     }
 
     public void SetRuleEnabled(string ruleName, bool enabled)
     {
         dynamic policy = GetPolicy();
         dynamic rules = policy.Rules;
-
         foreach (dynamic rule in rules)
         {
             if (string.Equals(rule.Name, ruleName, StringComparison.OrdinalIgnoreCase))
@@ -101,43 +214,38 @@ public class FirewallEngine
         }
     }
 
-    public (int disabledCount, int retainedCount) EnforceLockdownPolicy()
+    public void ToggleRuleAction(string ruleName)
     {
         dynamic policy = GetPolicy();
         dynamic rules = policy.Rules;
-
-        int disabled = 0;
-        int retained = 0;
-
         foreach (dynamic rule in rules)
         {
-            try
+            if (string.Equals(rule.Name, ruleName, StringComparison.OrdinalIgnoreCase))
             {
-                string name = rule.Name ?? "";
-                string grouping = rule.Grouping ?? "";
-
-                bool isCore = IsCoreNetworkingGroup(grouping);
-                bool isApproved = _approvedRulesIni.GetValue("ApprovedRules", name, "false") == "true";
-
-                if (isCore || isApproved)
-                {
-                    retained++;
-                }
-                else
-                {
-                    if (rule.Enabled)
-                    {
-                        rule.Enabled = false;
-                        disabled++;
-                    }
-                }
-            }
-            catch
-            {
-                // Skip rules locked by active Group Policy or system domain controllers
+                int currentAction = (int)rule.Action;
+                rule.Action = currentAction == 1 ? 0 : 1; // Swap Allow (1) <-> Block (0)
             }
         }
+    }
 
-        return (disabled, retained);
+    public void ApproveRule(string ruleName)
+    {
+        _approvedRulesIni.SetValue("ApprovedRules", ruleName, "true");
+        _approvedRulesIni.Save(_rulesFilePath);
+    }
+
+    public void RevokeRule(string ruleName)
+    {
+        _approvedRulesIni.RemoveKey("ApprovedRules", ruleName);
+        _approvedRulesIni.Save(_rulesFilePath);
+        // If revoking an allow rule, disable it immediately
+        dynamic policy = GetPolicy();
+        foreach (dynamic rule in policy.Rules)
+        {
+            if (string.Equals(rule.Name, ruleName, StringComparison.OrdinalIgnoreCase))
+            {
+                if ((int)rule.Action == 1) rule.Enabled = false;
+            }
+        }
     }
 }
