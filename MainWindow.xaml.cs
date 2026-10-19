@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using FirewallConsole.Firewall;
-using FirewallConsole.Storage;
+using WinForms = System.Windows.Forms;
 
 namespace FirewallConsole;
 
@@ -15,28 +17,99 @@ public partial class MainWindow : Window
     private readonly FirewallEngine _engine = new();
     private List<FirewallRuleModel> _allRules = new();
     private bool _isWhitelistMode = true;
+    private WinForms.NotifyIcon? _notifyIcon;
+    private readonly DispatcherTimer _watchdogTimer = new();
+    private bool _isClosingFromTray = false;
 
     public MainWindow()
     {
         InitializeComponent();
+        InitializeTray();
         Loaded += MainWindow_Loaded;
+
+        // Periodic watchdog: In Whitelist mode, silently suppresses unauthorized allow rules every 10 seconds
+        _watchdogTimer.Interval = TimeSpan.FromSeconds(10);
+        _watchdogTimer.Tick += async (s, e) =>
+        {
+            if (_isWhitelistMode)
+            {
+                var (disabled, _) = await Task.Run(() => _engine.SetOperatingMode(true));
+                if (disabled > 0 && IsVisible)
+                {
+                    await ReloadRulesAsync();
+                }
+            }
+        };
+    }
+
+    private void InitializeTray()
+    {
+        _notifyIcon = new WinForms.NotifyIcon
+        {
+            Text = "Firewall Console",
+            Visible = true
+        };
+
+        var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
+        if (File.Exists(iconPath))
+        {
+            try
+            {
+                using var bmp = new Bitmap(iconPath);
+                _notifyIcon.Icon = Icon.FromHandle(bmp.GetHicon());
+            }
+            catch
+            {
+                _notifyIcon.Icon = SystemIcons.Shield;
+            }
+        }
+        else
+        {
+            _notifyIcon.Icon = SystemIcons.Shield;
+        }
+
+        var menu = new WinForms.ContextMenuStrip();
+        var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
+        var toggleItem = new WinForms.ToolStripMenuItem("Toggle Mode", null, (s, e) => Dispatcher.Invoke(ToggleMode));
+        var exitItem = new WinForms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
+
+        menu.Items.Add(openItem);
+        menu.Items.Add(toggleItem);
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add(exitItem);
+
+        _notifyIcon.ContextMenuStrip = menu;
+        _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
+    }
+
+    private void RestoreWindow()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        ShowInTaskbar = true;
+        Activate();
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
-            string mode = App.Settings.GetValue("Policy", "Mode", "Whitelist");
+            string mode = App.Config.GetValue("Settings", "Mode", "Whitelist");
             _isWhitelistMode = mode.Equals("Whitelist", StringComparison.OrdinalIgnoreCase);
             UpdateModeButtonLabel();
 
-            StatusLabel.Text = "Synchronizing and suppressing unapproved allow rules...";
-            var (disabled, retained) = await Task.Run(() => _engine.EnforceMode(_isWhitelistMode));
+            bool startMinimized = bool.TryParse(App.Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
+            ChkStartMinimized.IsChecked = startMinimized;
+
+            StatusLabel.Text = "Applying configured firewall policy...";
+            var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
 
             await ReloadRulesAsync();
+            _watchdogTimer.Start();
+
             StatusLabel.Text = _isWhitelistMode
-                ? $"Whitelist Active: Disabled {disabled} unapproved allow rules. Retained {retained} rules."
-                : "Blacklist Mode Active: Operating permissively.";
+                ? $"Whitelist Active: Suppressed {affected} unapproved allow rules. Retained {retained} rules."
+                : $"Blacklist Active: Restored {affected} rules. Operating permissively.";
         }
         catch (Exception ex)
         {
@@ -76,11 +149,8 @@ public partial class MainWindow : Window
     private DataGrid GetActiveGrid() =>
         RulesTabControl.SelectedIndex == 0 ? InboundGrid : OutboundGrid;
 
-    private List<FirewallRuleModel> GetSelectedRules()
-    {
-        var grid = GetActiveGrid();
-        return grid.SelectedItems.Cast<FirewallRuleModel>().ToList();
-    }
+    private List<FirewallRuleModel> GetSelectedRules() =>
+        GetActiveGrid().SelectedItems.Cast<FirewallRuleModel>().ToList();
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
@@ -91,35 +161,51 @@ public partial class MainWindow : Window
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
-        StatusLabel.Text = "Refreshing firewall rules...";
+        StatusLabel.Text = "Refreshing rules...";
         await ReloadRulesAsync();
-        StatusLabel.Text = "Refreshed.";
+        StatusLabel.Text = "Rules updated.";
     }
 
-    private async void ModeToggle_Click(object sender, RoutedEventArgs e)
+    private void ModeToggle_Click(object sender, RoutedEventArgs e) => ToggleMode();
+
+    private async void ToggleMode()
     {
         _isWhitelistMode = !_isWhitelistMode;
-        App.Settings.SetValue("Policy", "Mode", _isWhitelistMode ? "Whitelist" : "Blacklist");
-        App.Settings.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini"));
         UpdateModeButtonLabel();
+
+        StatusLabel.Text = _isWhitelistMode
+            ? "Switching to Whitelist: Suppressing unapproved allow rules..."
+            : "Switching to Blacklist: Restoring allow rules...";
+
+        var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
+        await ReloadRulesAsync();
 
         if (_isWhitelistMode)
         {
-            StatusLabel.Text = "Enforcing Whitelist mode...";
-            var (disabled, retained) = await Task.Run(() => _engine.EnforceMode(true));
-            await ReloadRulesAsync();
-            MessageBox.Show($"Whitelist Mode engaged!\n\nDisabled {disabled} unapproved allow rules.\nRetained {retained} rules.",
-                            "Whitelist Active", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show($"Whitelist Mode Active!\n\nSuppressed {affected} unapproved allow rules.\nRetained {retained} rules.",
+                            "Whitelist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
         {
-            StatusLabel.Text = "Blacklist Mode active. Unapproved allow rules are not auto-suppressed.";
+            MessageBox.Show($"Blacklist Mode Active!\n\nRestored {affected} rules back to active state.",
+                            "Blacklist Engaged", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
     private void UpdateModeButtonLabel()
     {
         ModeToggleButton.Content = _isWhitelistMode ? "🛡 Mode: Whitelist (Strict)" : "🔓 Mode: Blacklist (Permissive)";
+        if (_notifyIcon != null)
+        {
+            _notifyIcon.Text = $"Firewall Console - {(_isWhitelistMode ? "Whitelist" : "Blacklist")}";
+        }
+    }
+
+    private void ChkStartMinimized_Changed(object sender, RoutedEventArgs e)
+    {
+        bool isChecked = ChkStartMinimized.IsChecked ?? false;
+        App.Config.SetValue("Settings", "StartMinimized", isChecked.ToString().ToLowerInvariant());
+        App.Config.Save(_engine.ConfigPath);
     }
 
     private void NewRule_Click(object sender, RoutedEventArgs e) => OpenRuleDialog();
@@ -132,7 +218,7 @@ public partial class MainWindow : Window
             StatusLabel.Text = $"Creating rule '{dialog.CreatedRule.Name}'...";
             await Task.Run(() => _engine.AddRule(dialog.CreatedRule));
             await ReloadRulesAsync();
-            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' added successfully.";
+            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' created.";
         }
     }
 
@@ -178,10 +264,7 @@ public partial class MainWindow : Window
 
         await Task.Run(() =>
         {
-            foreach (var r in selected)
-            {
-                _engine.SetRuleEnabled(r, true);
-            }
+            foreach (var r in selected) _engine.SetRuleEnabled(r, true);
         });
         await ReloadRulesAsync();
         StatusLabel.Text = $"Enabled {selected.Count} rule(s).";
@@ -194,10 +277,7 @@ public partial class MainWindow : Window
 
         await Task.Run(() =>
         {
-            foreach (var r in selected)
-            {
-                _engine.SetRuleEnabled(r, false);
-            }
+            foreach (var r in selected) _engine.SetRuleEnabled(r, false);
         });
         await ReloadRulesAsync();
         StatusLabel.Text = $"Disabled {selected.Count} rule(s).";
@@ -210,10 +290,7 @@ public partial class MainWindow : Window
 
         await Task.Run(() =>
         {
-            foreach (var r in selected)
-            {
-                _engine.ToggleRuleAction(r);
-            }
+            foreach (var r in selected) _engine.ToggleRuleAction(r);
         });
         await ReloadRulesAsync();
         StatusLabel.Text = $"Toggled action for {selected.Count} rule(s).";
@@ -224,17 +301,14 @@ public partial class MainWindow : Window
         var selected = GetSelectedRules();
         if (selected.Count == 0) return;
 
-        var res = MessageBox.Show($"Permanently delete {selected.Count} selected rule(s)?", "Confirm Delete",
+        var res = MessageBox.Show($"Permanently delete {selected.Count} rule(s)?", "Confirm Delete",
                                   MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (res == MessageBoxResult.Yes)
         {
             StatusLabel.Text = $"Deleting {selected.Count} rule(s)...";
             await Task.Run(() =>
             {
-                foreach (var r in selected)
-                {
-                    _engine.DeleteRule(r);
-                }
+                foreach (var r in selected) _engine.DeleteRule(r);
             });
             await ReloadRulesAsync();
             StatusLabel.Text = $"Deleted {selected.Count} rule(s).";
@@ -243,7 +317,7 @@ public partial class MainWindow : Window
 
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
-        var current = App.Settings.GetValue("Appearance", "Theme", "Light");
+        var current = App.Config.GetValue("Settings", "Theme", "Light");
         var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
     }
@@ -274,5 +348,37 @@ public partial class MainWindow : Window
                 OpenRuleDialog(files[0]);
             }
         }
+    }
+
+    private void Window_StateChanged(object sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            Hide();
+            ShowInTaskbar = false;
+        }
+    }
+
+    private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_isClosingFromTray)
+        {
+            // Minimize to system tray on window close
+            e.Cancel = true;
+            Hide();
+            ShowInTaskbar = false;
+        }
+        else
+        {
+            _watchdogTimer.Stop();
+            _notifyIcon?.Dispose();
+        }
+    }
+
+    private void ExitApp()
+    {
+        _isClosingFromTray = true;
+        Close();
+        Application.Current.Shutdown();
     }
 }
