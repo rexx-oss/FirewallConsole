@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using FirewallConsole.Storage;
 
 namespace FirewallConsole.Firewall;
@@ -119,43 +120,58 @@ public class FirewallEngine
         dynamic policy = GetPolicy();
         dynamic rules = policy.Rules;
 
-        foreach (dynamic rule in rules)
+        try
         {
-            try
+            foreach (dynamic rule in rules)
             {
-                string name = rule.Name ?? "";
-                string grouping = rule.Grouping ?? "";
-                string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
-                string app = rule.ApplicationName ?? "";
-                string protoStr = ConvertProtocol((int)rule.Protocol);
-                string lp = rule.LocalPorts ?? "*";
-                string rp = rule.RemotePorts ?? "*";
-
-                string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
-
-                bool isCore = IsCoreNetworking(grouping);
-                bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
-
-                list.Add(new FirewallRuleModel
+                try
                 {
-                    Id = ruleId,
-                    Name = name,
-                    Description = rule.Description ?? "",
-                    Grouping = grouping,
-                    ApplicationName = app,
-                    Enabled = rule.Enabled,
-                    Direction = direction,
-                    Action = ((int)rule.Action) == 1 ? "Allow" : "Block",
-                    Protocol = protoStr,
-                    LocalPorts = lp,
-                    RemotePorts = rp,
-                    LocalAddresses = rule.LocalAddresses ?? "*",
-                    RemoteAddresses = rule.RemoteAddresses ?? "*",
-                    Profiles = ((int)rule.Profiles) == 0x7FFFFFFF ? "All" : rule.Profiles.ToString(),
-                    IsApproved = isApproved
-                });
+                    string name = rule.Name ?? "";
+                    string grouping = rule.Grouping ?? "";
+                    string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                    string app = rule.ApplicationName ?? "";
+                    string protoStr = ConvertProtocol((int)rule.Protocol);
+                    string lp = rule.LocalPorts ?? "*";
+                    string rp = rule.RemotePorts ?? "*";
+
+                    string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
+
+                    bool isCore = IsCoreNetworking(grouping);
+                    bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
+
+                    list.Add(new FirewallRuleModel
+                    {
+                        Id = ruleId,
+                        Name = name,
+                        Description = rule.Description ?? "",
+                        Grouping = grouping,
+                        ApplicationName = app,
+                        Enabled = rule.Enabled,
+                        Direction = direction,
+                        Action = ((int)rule.Action) == 1 ? "Allow" : "Block",
+                        Protocol = protoStr,
+                        LocalPorts = lp,
+                        RemotePorts = rp,
+                        LocalAddresses = rule.LocalAddresses ?? "*",
+                        RemoteAddresses = rule.RemoteAddresses ?? "*",
+                        Profiles = ((int)rule.Profiles) == 0x7FFFFFFF ? "All" : rule.Profiles.ToString(),
+                        IsApproved = isApproved
+                    });
+                }
+                catch { }
+                finally
+                {
+                    if (rule != null && Marshal.IsComObject(rule))
+                    {
+                        Marshal.ReleaseComObject(rule);
+                    }
+                }
             }
-            catch { }
+        }
+        finally
+        {
+            if (rules != null && Marshal.IsComObject(rules)) Marshal.ReleaseComObject(rules);
+            if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
         }
         return list;
     }
@@ -178,65 +194,81 @@ public class FirewallEngine
         dynamic rules = policy.Rules;
         var autoDisabledMap = new HashSet<string>(_config.GetKeys("AutoDisabled"), StringComparer.OrdinalIgnoreCase);
 
-        if (whitelistMode)
+        try
         {
-            foreach (dynamic rule in rules)
+            if (whitelistMode)
             {
-                try
+                foreach (dynamic rule in rules)
                 {
-                    if ((int)rule.Action != 1) continue;
-
-                    string name = rule.Name ?? "";
-                    string grouping = rule.Grouping ?? "";
-                    string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
-                    string app = rule.ApplicationName ?? "";
-                    string protoStr = ConvertProtocol((int)rule.Protocol);
-                    string lp = rule.LocalPorts ?? "*";
-                    string rp = rule.RemotePorts ?? "*";
-
-                    string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
-
-                    bool isCore = IsCoreNetworking(grouping);
-                    bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
-
-                    if (isApproved)
+                    try
                     {
-                        retained++;
+                        if ((int)rule.Action != 1) continue;
+
+                        string name = rule.Name ?? "";
+                        string grouping = rule.Grouping ?? "";
+                        string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                        string app = rule.ApplicationName ?? "";
+                        string protoStr = ConvertProtocol((int)rule.Protocol);
+                        string lp = rule.LocalPorts ?? "*";
+                        string rp = rule.RemotePorts ?? "*";
+
+                        string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
+
+                        bool isCore = IsCoreNetworking(grouping);
+                        bool isApproved = isCore || _config.GetValue("ApprovedRules", ruleId, "false") == "true";
+
+                        if (isApproved)
+                        {
+                            retained++;
+                        }
+                        else if ((bool)rule.Enabled)
+                        {
+                            rule.Enabled = false;
+                            _config.SetValue("AutoDisabled", ruleId, "true");
+                            affected++;
+                        }
                     }
-                    else if ((bool)rule.Enabled)
+                    catch { }
+                    finally
                     {
-                        rule.Enabled = false;
-                        _config.SetValue("AutoDisabled", ruleId, "true");
-                        affected++;
+                        if (rule != null && Marshal.IsComObject(rule)) Marshal.ReleaseComObject(rule);
                     }
                 }
-                catch { }
+            }
+            else
+            {
+                foreach (dynamic rule in rules)
+                {
+                    try
+                    {
+                        string name = rule.Name ?? "";
+                        string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
+                        string app = rule.ApplicationName ?? "";
+                        string protoStr = ConvertProtocol((int)rule.Protocol);
+                        string lp = rule.LocalPorts ?? "*";
+                        string rp = rule.RemotePorts ?? "*";
+
+                        string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
+
+                        if (autoDisabledMap.Contains(ruleId))
+                        {
+                            rule.Enabled = true;
+                            affected++;
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        if (rule != null && Marshal.IsComObject(rule)) Marshal.ReleaseComObject(rule);
+                    }
+                }
+                _config.RemoveSection("AutoDisabled");
             }
         }
-        else
+        finally
         {
-            foreach (dynamic rule in rules)
-            {
-                try
-                {
-                    string name = rule.Name ?? "";
-                    string direction = ((int)rule.Direction) == 1 ? "Inbound" : "Outbound";
-                    string app = rule.ApplicationName ?? "";
-                    string protoStr = ConvertProtocol((int)rule.Protocol);
-                    string lp = rule.LocalPorts ?? "*";
-                    string rp = rule.RemotePorts ?? "*";
-
-                    string ruleId = FirewallRuleModel.ComputeRuleId(name, direction, app, protoStr, lp, rp);
-
-                    if (autoDisabledMap.Contains(ruleId))
-                    {
-                        rule.Enabled = true;
-                        affected++;
-                    }
-                }
-                catch { }
-            }
-            _config.RemoveSection("AutoDisabled");
+            if (rules != null && Marshal.IsComObject(rules)) Marshal.ReleaseComObject(rules);
+            if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
         }
 
         _config.SetValue("Settings", "Mode", whitelistMode ? "Whitelist" : "Blacklist");
@@ -290,6 +322,9 @@ public class FirewallEngine
 
         model.Id = FirewallRuleModel.ComputeRuleId(model.Name, model.Direction, model.ApplicationName, model.Protocol, model.LocalPorts, model.RemotePorts);
         SaveRuleToConfig(model);
+
+        if (newRule != null && Marshal.IsComObject(newRule)) Marshal.ReleaseComObject(newRule);
+        if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
     }
 
     public void UpdateRule(FirewallRuleModel oldModel, FirewallRuleModel newModel)
@@ -333,13 +368,28 @@ public class FirewallEngine
     public void SetRuleEnabled(FirewallRuleModel target, bool enabled)
     {
         dynamic policy = GetPolicy();
-        foreach (dynamic rule in policy.Rules)
+        try
         {
-            if (RuleMatches(rule, target))
+            foreach (dynamic rule in policy.Rules)
             {
-                rule.Enabled = enabled;
+                try
+                {
+                    if (RuleMatches(rule, target))
+                    {
+                        rule.Enabled = enabled;
+                    }
+                }
+                finally
+                {
+                    if (rule != null && Marshal.IsComObject(rule)) Marshal.ReleaseComObject(rule);
+                }
             }
         }
+        finally
+        {
+            if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
+        }
+
         target.Enabled = enabled;
         _config.SetValue($"Rule_{target.Id}", "Enabled", enabled.ToString());
         _config.Save(_iniPath);
@@ -349,15 +399,30 @@ public class FirewallEngine
     {
         dynamic policy = GetPolicy();
         string newAction = "Allow";
-        foreach (dynamic rule in policy.Rules)
+        try
         {
-            if (RuleMatches(rule, target))
+            foreach (dynamic rule in policy.Rules)
             {
-                int currentAction = (int)rule.Action;
-                rule.Action = currentAction == 1 ? 0 : 1;
-                newAction = currentAction == 1 ? "Block" : "Allow";
+                try
+                {
+                    if (RuleMatches(rule, target))
+                    {
+                        int currentAction = (int)rule.Action;
+                        rule.Action = currentAction == 1 ? 0 : 1;
+                        newAction = currentAction == 1 ? "Block" : "Allow";
+                    }
+                }
+                finally
+                {
+                    if (rule != null && Marshal.IsComObject(rule)) Marshal.ReleaseComObject(rule);
+                }
             }
         }
+        finally
+        {
+            if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
+        }
+
         target.Action = newAction;
         _config.SetValue($"Rule_{target.Id}", "Action", newAction);
         _config.Save(_iniPath);
@@ -385,12 +450,16 @@ public class FirewallEngine
 
     public void DeleteRule(FirewallRuleModel target)
     {
+        dynamic policy = GetPolicy();
         try
         {
-            dynamic policy = GetPolicy();
             policy.Rules.Remove(target.Name);
         }
         catch { }
+        finally
+        {
+            if (policy != null && Marshal.IsComObject(policy)) Marshal.ReleaseComObject(policy);
+        }
 
         _config.RemoveSection($"Rule_{target.Id}");
         _config.RemoveKey("ApprovedRules", target.Id);
