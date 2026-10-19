@@ -5,6 +5,7 @@
         Height="540" Width="480"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
+        FontFamily="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
         Background="{DynamicResource BgBrush}">
 
     <Grid Margin="20">
@@ -20,7 +21,7 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="Rule Name *" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                <TextBox x:Name="TxtName" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}" Margin="0,0,0,10"/>
+                <TextBox x:Name="TxtName" Margin="0,0,0,10"/>
 
                 <TextBlock Text="Program / Executable Path" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
                 <Grid Margin="0,0,0,10">
@@ -28,8 +29,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="TxtAppPath" Grid.Column="0" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
-                    <Button Grid.Column="1" Content="Browse" Click="Browse_Click" Margin="6,0,0,0" Padding="10,4" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}"/>
+                    <TextBox x:Name="TxtAppPath" Grid.Column="0"/>
+                    <Button Grid.Column="1" Content="Browse" Click="Browse_Click" Margin="6,0,0,0" Padding="12,5"/>
                 </Grid>
 
                 <Grid Margin="0,0,0,10">
@@ -40,7 +41,7 @@
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
                         <TextBlock Text="Direction" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CmbDirection" SelectedIndex="0" Padding="6">
+                        <ComboBox x:Name="CmbDirection" SelectedIndex="0">
                             <ComboBoxItem Content="Inbound"/>
                             <ComboBoxItem Content="Outbound"/>
                         </ComboBox>
@@ -48,7 +49,7 @@
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
                         <TextBlock Text="Action" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CmbAction" SelectedIndex="0" Padding="6">
+                        <ComboBox x:Name="CmbAction" SelectedIndex="0">
                             <ComboBoxItem Content="Allow"/>
                             <ComboBoxItem Content="Block"/>
                         </ComboBox>
@@ -63,7 +64,7 @@
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
                         <TextBlock Text="Protocol" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CmbProtocol" SelectedIndex="0" Padding="6">
+                        <ComboBox x:Name="CmbProtocol" SelectedIndex="0">
                             <ComboBoxItem Content="Any"/>
                             <ComboBoxItem Content="TCP"/>
                             <ComboBoxItem Content="UDP"/>
@@ -73,7 +74,7 @@
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
                         <TextBlock Text="Profiles" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="CmbProfiles" SelectedIndex="0" Padding="6">
+                        <ComboBox x:Name="CmbProfiles" SelectedIndex="0">
                             <ComboBoxItem Content="All"/>
                             <ComboBoxItem Content="Domain"/>
                             <ComboBoxItem Content="Private"/>
@@ -90,25 +91,25 @@
 
                     <StackPanel Grid.Column="0" Margin="0,0,5,0">
                         <TextBlock Text="Local Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtLocalPort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+                        <TextBox x:Name="TxtLocalPort" Text="*"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,0,0">
                         <TextBlock Text="Remote Port(s) (* or 80,443)" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtRemotePort" Text="*" Padding="6" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderBrush}"/>
+                        <TextBox x:Name="TxtRemotePort" Text="*"/>
                     </StackPanel>
                 </Grid>
 
-                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                    <CheckBox x:Name="ChkEnabled" Content="Enabled" IsChecked="True" Foreground="{DynamicResource TextPrimary}" Margin="0,0,20,0"/>
-                    <CheckBox x:Name="ChkApproved" Content="Add to Whitelist (Approved)" IsChecked="True" Foreground="{DynamicResource TextPrimary}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <CheckBox x:Name="ChkEnabled" Content="Enabled" IsChecked="True" Margin="0,0,20,0"/>
+                    <CheckBox x:Name="ChkApproved" Content="Add to Whitelist (Approved)" IsChecked="True"/>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Content="Cancel" Click="Cancel_Click" Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimary}" Margin="0,0,10,0" Padding="14,6"/>
-            <Button x:Name="BtnSave" Content="Create Rule" Click="Create_Click" Background="{DynamicResource AccentBrush}" Foreground="White" Padding="14,6"/>
+            <Button Content="Cancel" Click="Cancel_Click" Margin="0,0,10,0" Padding="14,6"/>
+            <Button x:Name="BtnSave" Content="Create Rule" Click="Create_Click" Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0" Padding="16,6"/>
         </StackPanel>
     </Grid>
 </Window>
