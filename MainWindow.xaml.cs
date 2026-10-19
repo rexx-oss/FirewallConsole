@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FirewallConsole.Firewall;
+using FirewallConsole.Models;
+using FirewallConsole.Monitoring;
 using Application = System.Windows.Application;
 using DataGrid = System.Windows.Controls.DataGrid;
 using DragEventArgs = System.Windows.DragEventArgs;
@@ -19,6 +23,8 @@ public partial class MainWindow : Window
 {
     private readonly FirewallEngine _engine = new();
     private List<FirewallRuleModel> _allRules = new();
+    private readonly ObservableCollection<BlockedConnectionModel> _blockedLogs = new();
+    private readonly BlockedConnectionMonitor _monitor = new();
     private bool _isWhitelistMode = true;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private readonly DispatcherTimer _watchdogTimer = new();
@@ -28,6 +34,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         InitializeTrayAndIcons();
+        BlockedGrid.ItemsSource = _blockedLogs;
+        _monitor.BlockedConnectionReceived += Monitor_BlockedConnectionReceived;
+
         Loaded += MainWindow_Loaded;
 
         _watchdogTimer.Interval = TimeSpan.FromSeconds(10);
@@ -42,6 +51,18 @@ public partial class MainWindow : Window
                 }
             }
         };
+    }
+
+    private void Monitor_BlockedConnectionReceived(BlockedConnectionModel item)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _blockedLogs.Insert(0, item);
+            if (_blockedLogs.Count > 500)
+            {
+                _blockedLogs.RemoveAt(_blockedLogs.Count - 1);
+            }
+        });
     }
 
     private void InitializeTrayAndIcons()
@@ -121,6 +142,9 @@ public partial class MainWindow : Window
             bool startMinimized = bool.TryParse(App.Config.GetValue("Settings", "StartMinimized", "false"), out bool sm) && sm;
             ChkStartMinimized.IsChecked = startMinimized;
 
+            StatusLabel.Text = "Synchronizing backup rules from firecon.ini...";
+            int restored = await Task.Run(() => _engine.SyncStoredRulesFromConfig());
+
             StatusLabel.Text = "Applying configured firewall policy...";
             var (affected, retained) = await Task.Run(() => _engine.SetOperatingMode(_isWhitelistMode));
 
@@ -128,8 +152,8 @@ public partial class MainWindow : Window
             _watchdogTimer.Start();
 
             StatusLabel.Text = _isWhitelistMode
-                ? $"Whitelist Active: Default Outbound Blocked. Suppressed {affected} unapproved allow rules."
-                : $"Blacklist Active: Default Outbound Allowed. Restored {affected} rules.";
+                ? $"Whitelist Active: Restored {restored} rules. Suppressed {affected} unapproved rules."
+                : $"Blacklist Active: Restored {restored} rules. Operating permissively.";
         }
         catch (Exception ex)
         {
@@ -149,8 +173,10 @@ public partial class MainWindow : Window
     {
         var filter = SearchBox.Text.Trim();
         var currentTab = (RulesTabControl.SelectedItem as TabItem)?.Header?.ToString() ?? "Outbound Rules";
-        bool isOutbound = currentTab.Contains("Outbound");
 
+        if (currentTab.Contains("Blocked")) return;
+
+        bool isOutbound = currentTab.Contains("Outbound");
         var targetList = _allRules.Where(r => isOutbound ? r.Direction == "Outbound" : r.Direction == "Inbound");
 
         if (!string.IsNullOrWhiteSpace(filter))
@@ -229,6 +255,35 @@ public partial class MainWindow : Window
     }
 
     private void NewRule_Click(object sender, RoutedEventArgs e) => OpenRuleDialog();
+
+    private void EditSelected_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = GetSelectedRules();
+        if (selected.Count > 0)
+        {
+            OpenEditRuleDialog(selected[0]);
+        }
+    }
+
+    private void Grid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (GetSelectedRules() is { Count: > 0 } list)
+        {
+            OpenEditRuleDialog(list[0]);
+        }
+    }
+
+    private async void OpenEditRuleDialog(FirewallRuleModel ruleToEdit)
+    {
+        var dialog = new RuleDialog(ruleToEdit) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.CreatedRule != null)
+        {
+            StatusLabel.Text = $"Updating rule '{dialog.CreatedRule.Name}'...";
+            await Task.Run(() => _engine.UpdateRule(ruleToEdit, dialog.CreatedRule));
+            await ReloadRulesAsync();
+            StatusLabel.Text = $"Rule '{dialog.CreatedRule.Name}' updated.";
+        }
+    }
 
     private async void OpenRuleDialog(string? prefilledPath = null)
     {
@@ -335,6 +390,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ToggleLogging_Click(object sender, RoutedEventArgs e)
+    {
+        if (_monitor.IsRunning)
+        {
+            _monitor.Stop();
+            BtnToggleLogging.Content = "▶ Start Logging";
+            BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("SuccessBrush");
+            LoggingStatusText.Text = "Logging stopped. Monitoring paused.";
+        }
+        else
+        {
+            _monitor.Start();
+            BtnToggleLogging.Content = "⏹ Stop Logging";
+            BtnToggleLogging.Background = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            LoggingStatusText.Text = "Active: Monitoring blocked connection events in real time...";
+        }
+    }
+
+    private void ClearBlockedLog_Click(object sender, RoutedEventArgs e) => _blockedLogs.Clear();
+
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
         var current = App.Config.GetValue("Settings", "Theme", "Light");
@@ -390,6 +465,7 @@ public partial class MainWindow : Window
         else
         {
             _watchdogTimer.Stop();
+            _monitor.Dispose();
             _notifyIcon?.Dispose();
         }
     }
