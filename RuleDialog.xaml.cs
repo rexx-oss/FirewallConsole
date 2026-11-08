@@ -65,7 +65,6 @@ public partial class RuleDialog : Window
         string theme = App.Config.GetValue("Settings", "Theme", "Light");
         int useDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 
-        // 20 is DWMWA_USE_IMMERSIVE_DARK_MODE in Windows 10 (20H1+) and Windows 11; 19 is fallback
         if (DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int)) != 0)
         {
             DwmSetWindowAttribute(hwnd, 19, ref useDark, sizeof(int));
