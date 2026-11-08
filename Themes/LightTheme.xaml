@@ -57,7 +57,7 @@
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentBrush}"/>
-                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                            <Setter TargetName="ItemBorder" Property="TextElement.Foreground" Value="#FFFFFF"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -65,8 +65,8 @@
         </Setter>
     </Style>
 
-    <!-- Separate ToggleButton Template to prevent BAML TypeConverter exception -->
-    <ControlTemplate x:Key="LightComboBoxToggleButtonTemplate" TargetType="{x:Type ToggleButton}">
+    <!-- Shared ToggleButton Template -->
+    <ControlTemplate x:Key="ComboBoxToggleButtonTemplate" TargetType="{x:Type ToggleButton}">
         <Border Background="{TemplateBinding Background}" 
                 BorderBrush="{TemplateBinding BorderBrush}" 
                 BorderThickness="{TemplateBinding BorderThickness}" 
@@ -76,7 +76,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="28"/>
                 </Grid.ColumnDefinitions>
-                <Path Grid.Column="1" Data="M 0 0 L 4 4 L 8 0 Z" 
+                <Path Grid.Column="1" Data="M 0,0 L 4,4 L 8,0 Z" 
                       Fill="{DynamicResource TextSecondary}" 
                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
@@ -101,7 +101,7 @@
                                       BorderThickness="{TemplateBinding BorderThickness}"
                                       Focusable="False"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                      Template="{StaticResource LightComboBoxToggleButtonTemplate}"/>
+                                      Template="{StaticResource ComboBoxToggleButtonTemplate}"/>
 
                         <ContentPresenter x:Name="ContentSite"
                                           IsHitTestVisible="False"
@@ -125,7 +125,7 @@
                                     Width="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                 <ScrollViewer Margin="2" SnapsToDevicePixels="True">
-                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Circular"/>
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
                                 </ScrollViewer>
                             </Border>
                         </Popup>
