@@ -9,19 +9,19 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         Closing="Window_Closing"
-        FontFamily="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
+        FontFamily="Segoe UI"
         Background="{DynamicResource BgBrush}">
 
     <Window.Resources>
-        <Style TargetType="TabItem">
-            <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
+        <Style TargetType="{x:Type TabItem}">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Padding" Value="16,8"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="TabItem">
+                    <ControlTemplate TargetType="{x:Type TabItem}">
                         <Border x:Name="TabBorder" Background="Transparent" BorderThickness="0,0,0,2" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
                             <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -73,7 +73,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBox x:Name="SearchBox" Grid.Column="0" VerticalContentAlignment="Center" Padding="8,4" 
-                         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextPrimary}" 
+                         Background="{DynamicResource ButtonBgBrush}" Foreground="{DynamicResource TextPrimary}" 
                          BorderBrush="{DynamicResource BorderBrush}" TextChanged="SearchBox_TextChanged"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
