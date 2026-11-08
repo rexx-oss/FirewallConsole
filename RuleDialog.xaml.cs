@@ -1,6 +1,9 @@
+using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using FirewallConsole.Firewall;
 using Microsoft.Win32;
 
@@ -10,9 +13,14 @@ public partial class RuleDialog : Window
 {
     public FirewallRuleModel? CreatedRule { get; private set; }
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
     public RuleDialog(string? prefilledPath = null, string? direction = null, string? protocol = null)
     {
         InitializeComponent();
+        SourceInitialized += (s, e) => ApplyTitleBarTheme();
+
         if (!string.IsNullOrWhiteSpace(prefilledPath))
         {
             TxtAppPath.Text = prefilledPath;
@@ -31,6 +39,7 @@ public partial class RuleDialog : Window
     public RuleDialog(FirewallRuleModel existingRule)
     {
         InitializeComponent();
+        SourceInitialized += (s, e) => ApplyTitleBarTheme();
 
         DialogTitle.Text = $"Edit Rule: {existingRule.Name}";
         BtnSave.Content = "Save Changes";
@@ -46,6 +55,21 @@ public partial class RuleDialog : Window
         SelectComboValue(CmbAction, existingRule.Action);
         SelectComboValue(CmbProtocol, existingRule.Protocol);
         SelectComboValue(CmbProfiles, existingRule.Profiles);
+    }
+
+    private void ApplyTitleBarTheme()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        string theme = App.Config.GetValue("Settings", "Theme", "Light");
+        int useDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        // 20 is DWMWA_USE_IMMERSIVE_DARK_MODE in Windows 10 (20H1+) and Windows 11; 19 is fallback
+        if (DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int)) != 0)
+        {
+            DwmSetWindowAttribute(hwnd, 19, ref useDark, sizeof(int));
+        }
     }
 
     private static void SelectComboValue(ComboBox cmb, string val)
