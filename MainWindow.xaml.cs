@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FirewallConsole.Firewall;
@@ -38,6 +39,9 @@ public partial class MainWindow : Window
     [DllImport("psapi.dll")]
     private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
     public static void TrimWorkingSet()
     {
         GC.Collect(2, GCCollectionMode.Aggressive, true, true);
@@ -57,6 +61,7 @@ public partial class MainWindow : Window
         BlockedGrid.ItemsSource = _blockedLogs;
         _monitor.BlockedConnectionReceived += Monitor_BlockedConnectionReceived;
 
+        SourceInitialized += (s, e) => ApplyTitleBarTheme();
         Loaded += MainWindow_Loaded;
 
         _watchdogTimer.Interval = TimeSpan.FromSeconds(15);
@@ -71,6 +76,20 @@ public partial class MainWindow : Window
                 }
             }
         };
+    }
+
+    private void ApplyTitleBarTheme()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        string theme = App.Config.GetValue("Settings", "Theme", "Light");
+        int useDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        if (DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int)) != 0)
+        {
+            DwmSetWindowAttribute(hwnd, 19, ref useDark, sizeof(int));
+        }
     }
 
     private void Monitor_BlockedConnectionReceived(BlockedConnectionModel item)
@@ -133,8 +152,12 @@ public partial class MainWindow : Window
             _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
         }
 
-        _trayMenu = new WinForms.ContextMenuStrip();
-        _trayMenu.Font = new System.Drawing.Font("Segoe UI", 9f);
+        _trayMenu = new WinForms.ContextMenuStrip
+        {
+            Font = new System.Drawing.Font("Segoe UI", 9f),
+            ShowImageMargin = false,
+            ShowCheckMargin = false
+        };
 
         var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
         _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText(), null, (s, e) => Dispatcher.Invoke(ToggleMode));
@@ -495,6 +518,7 @@ public partial class MainWindow : Window
         var current = App.Config.GetValue("Settings", "Theme", "Light");
         var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
+        ApplyTitleBarTheme();
         UpdateTrayMenuTheme();
     }
 
@@ -530,7 +554,6 @@ public partial class MainWindow : Window
     {
         if (!_isClosingFromTray)
         {
-            // Close button "X" minimizes directly to the system tray
             e.Cancel = true;
             Hide();
             ShowInTaskbar = false;
@@ -553,8 +576,7 @@ public partial class MainWindow : Window
 }
 
 /// <summary>
-/// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes.
-/// Fully qualifies all GDI+ types to eliminate ambiguous collisions with WPF types.
+/// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes without white borders or artifacts.
 /// </summary>
 public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
 {
@@ -563,6 +585,20 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
     public ModernMenuRenderer(bool isDark) : base(new CustomColorTable(isDark))
     {
         _isDark = isDark;
+    }
+
+    protected override void OnRenderToolStripBackground(WinForms.ToolStripRenderEventArgs e)
+    {
+        var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
+        using var brush = new System.Drawing.SolidBrush(bgColor);
+        e.Graphics.FillRectangle(brush, e.AffectedBounds);
+    }
+
+    protected override void OnRenderToolStripBorder(WinForms.ToolStripRenderEventArgs e)
+    {
+        var borderColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
+        using var pen = new System.Drawing.Pen(borderColor);
+        e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
     }
 
     protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
@@ -578,7 +614,7 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
         }
         else
         {
-            var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+            var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
             using var b = new System.Drawing.SolidBrush(bgColor);
             g.FillRectangle(b, rect);
         }
@@ -592,10 +628,14 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
 
     protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
     {
-        var sepColor = _isDark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
+        var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
+        using var bgBrush = new System.Drawing.SolidBrush(bgColor);
+        e.Graphics.FillRectangle(bgBrush, new System.Drawing.Rectangle(0, 0, e.Item.Width, e.Item.Height));
+
+        var sepColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
         using var pen = new System.Drawing.Pen(sepColor);
         int y = e.Item.Height / 2;
-        e.Graphics.DrawLine(pen, 4, y, e.Item.Width - 4, y);
+        e.Graphics.DrawLine(pen, 8, y, e.Item.Width - 8, y);
     }
 
     private class CustomColorTable : WinForms.ProfessionalColorTable
@@ -603,7 +643,7 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
         private readonly bool _dark;
         public CustomColorTable(bool dark) => _dark = dark;
 
-        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
-        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(51, 51, 56) : System.Drawing.Color.FromArgb(209, 213, 219);
+        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
+        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
     }
 }
