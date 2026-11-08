@@ -7,16 +7,16 @@
                 <ResourceDictionary Source="Themes/LightTheme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
-            <Style TargetType="Control" x:Key="BaseFontStyle">
-                <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
+            <Style TargetType="{x:Type Control}">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
             </Style>
 
-            <Style TargetType="Window">
-                <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
+            <Style TargetType="{x:Type Window}">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
             </Style>
 
-            <Style TargetType="Button">
-                <Setter Property="FontFamily" Value="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif"/>
+            <Style TargetType="{x:Type Button}">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
                 <Setter Property="Background" Value="{DynamicResource ButtonBgBrush}"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
                 <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
@@ -27,7 +27,7 @@
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Template">
                     <Setter.Value>
-                        <ControlTemplate TargetType="Button">
+                        <ControlTemplate TargetType="{x:Type Button}">
                             <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" 
                                     BorderBrush="{TemplateBinding BorderBrush}" 
                                     BorderThickness="{TemplateBinding BorderThickness}" 
