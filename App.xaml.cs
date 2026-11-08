@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using FirewallConsole.Storage;
 using Application = System.Windows.Application;
@@ -16,8 +17,18 @@ public partial class App : Application
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
             var ex = args.ExceptionObject as Exception;
-            System.Windows.MessageBox.Show($"Fatal Application Error:\n{ex?.Message}\n\nStack:\n{ex?.StackTrace}", 
-                                           "Fatal Exception", MessageBoxButton.OK, MessageBoxImage.Error);
+            var sb = new StringBuilder();
+            sb.AppendLine($"Fatal Application Error:\n{ex?.Message}\n");
+
+            var inner = ex?.InnerException;
+            while (inner != null)
+            {
+                sb.AppendLine($"Inner Cause:\n{inner.Message}\n");
+                inner = inner.InnerException;
+            }
+
+            sb.AppendLine($"Stack Trace:\n{ex?.StackTrace}");
+            System.Windows.MessageBox.Show(sb.ToString(), "Fatal Exception", MessageBoxButton.OK, MessageBoxImage.Error);
         };
 
         base.OnStartup(e);
