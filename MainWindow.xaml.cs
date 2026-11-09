@@ -154,18 +154,43 @@ public partial class MainWindow : Window
 
         _trayMenu = new WinForms.ContextMenuStrip
         {
-            Font = new System.Drawing.Font("Segoe UI", 9f),
+            Font = new System.Drawing.Font("Segoe UI", 9.5f),
             ShowImageMargin = false,
-            ShowCheckMargin = false
+            ShowCheckMargin = false,
+            DropShadowEnabled = true,
+            Padding = new WinForms.Padding(4, 6, 4, 6),
+            RenderMode = WinForms.ToolStripRenderMode.Professional
         };
 
-        var openItem = new WinForms.ToolStripMenuItem("Open Console", null, (s, e) => RestoreWindow());
-        _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText(), null, (s, e) => Dispatcher.Invoke(ToggleMode));
-        var exitItem = new WinForms.ToolStripMenuItem("Exit", null, (s, e) => Dispatcher.Invoke(ExitApp));
+        var openItem = new WinForms.ToolStripMenuItem("Open Console")
+        {
+            Padding = new WinForms.Padding(14, 6, 14, 6),
+            Margin = new WinForms.Padding(0, 1, 0, 1)
+        };
+        openItem.Click += (s, e) => RestoreWindow();
+
+        _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText())
+        {
+            Padding = new WinForms.Padding(14, 6, 14, 6),
+            Margin = new WinForms.Padding(0, 1, 0, 1)
+        };
+        _trayModeMenuItem.Click += (s, e) => Dispatcher.Invoke(ToggleMode);
+
+        var sep = new WinForms.ToolStripSeparator
+        {
+            Margin = new WinForms.Padding(0, 4, 0, 4)
+        };
+
+        var exitItem = new WinForms.ToolStripMenuItem("Exit")
+        {
+            Padding = new WinForms.Padding(14, 6, 14, 6),
+            Margin = new WinForms.Padding(0, 1, 0, 1)
+        };
+        exitItem.Click += (s, e) => Dispatcher.Invoke(ExitApp);
 
         _trayMenu.Items.Add(openItem);
         _trayMenu.Items.Add(_trayModeMenuItem);
-        _trayMenu.Items.Add(new WinForms.ToolStripSeparator());
+        _trayMenu.Items.Add(sep);
         _trayMenu.Items.Add(exitItem);
 
         UpdateTrayMenuTheme();
@@ -576,7 +601,7 @@ public partial class MainWindow : Window
 }
 
 /// <summary>
-/// Custom renderer to match the Tray Context Menu styling directly to Dark/Light themes without white borders or artifacts.
+/// Modernized context menu renderer with smooth pill hover highlights, custom padding, and clean theme borders.
 /// </summary>
 public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
 {
@@ -587,16 +612,28 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
         _isDark = isDark;
     }
 
+    private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectangle(System.Drawing.Rectangle rect, int radius)
+    {
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        int d = radius * 2;
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
     protected override void OnRenderToolStripBackground(WinForms.ToolStripRenderEventArgs e)
     {
-        var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
+        var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
         using var brush = new System.Drawing.SolidBrush(bgColor);
         e.Graphics.FillRectangle(brush, e.AffectedBounds);
     }
 
     protected override void OnRenderToolStripBorder(WinForms.ToolStripRenderEventArgs e)
     {
-        var borderColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
+        var borderColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(218, 222, 228);
         using var pen = new System.Drawing.Pen(borderColor);
         e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
     }
@@ -604,19 +641,15 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
     protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
     {
         var g = e.Graphics;
-        var rect = new System.Drawing.Rectangle(System.Drawing.Point.Empty, e.Item.Size);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
         if (e.Item.Selected)
         {
-            var hoverColor = _isDark ? System.Drawing.Color.FromArgb(42, 42, 48) : System.Drawing.Color.FromArgb(229, 231, 235);
-            using var b = new System.Drawing.SolidBrush(hoverColor);
-            g.FillRectangle(b, rect);
-        }
-        else
-        {
-            var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
-            using var b = new System.Drawing.SolidBrush(bgColor);
-            g.FillRectangle(b, rect);
+            var hoverColor = _isDark ? System.Drawing.Color.FromArgb(46, 46, 54) : System.Drawing.Color.FromArgb(235, 237, 240);
+            using var brush = new System.Drawing.SolidBrush(hoverColor);
+            var pillRect = new System.Drawing.Rectangle(4, 2, e.Item.Width - 8, e.Item.Height - 4);
+            using var path = CreateRoundedRectangle(pillRect, 5);
+            g.FillPath(brush, path);
         }
     }
 
@@ -628,14 +661,14 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
 
     protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
     {
-        var bgColor = _isDark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
+        var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
         using var bgBrush = new System.Drawing.SolidBrush(bgColor);
         e.Graphics.FillRectangle(bgBrush, new System.Drawing.Rectangle(0, 0, e.Item.Width, e.Item.Height));
 
-        var sepColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
+        var sepColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(226, 230, 236);
         using var pen = new System.Drawing.Pen(sepColor);
         int y = e.Item.Height / 2;
-        e.Graphics.DrawLine(pen, 8, y, e.Item.Width - 8, y);
+        e.Graphics.DrawLine(pen, 12, y, e.Item.Width - 12, y);
     }
 
     private class CustomColorTable : WinForms.ProfessionalColorTable
@@ -643,7 +676,7 @@ public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
         private readonly bool _dark;
         public CustomColorTable(bool dark) => _dark = dark;
 
-        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(24, 24, 28) : System.Drawing.Color.FromArgb(255, 255, 255);
-        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(209, 213, 219);
+        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
+        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(218, 222, 228);
     }
 }
