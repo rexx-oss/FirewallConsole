@@ -186,7 +186,7 @@ public partial class MainWindow : Window
         _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
     }
 
-    private void UpdateTrayMenuTheme()
+    public void UpdateTrayMenuTheme()
     {
         if (_trayContextMenu == null) return;
 
@@ -221,12 +221,26 @@ public partial class MainWindow : Window
     private string GetModeText() =>
         _isWhitelistMode ? "Mode: Whitelist (Strict)" : "Mode: Blacklist (Permissive)";
 
-    private void RestoreWindow()
+    public void RestoreWindow()
     {
         Show();
-        WindowState = WindowState.Normal;
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
         ShowInTaskbar = true;
+
+        // Force window to foreground
+        Topmost = true;
+        Topmost = false;
         Activate();
+        Focus();
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            SetForegroundWindow(hwnd);
+        }
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
