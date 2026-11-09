@@ -158,7 +158,7 @@ public partial class MainWindow : Window
             _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
         }
 
-        // Native WPF Modern ContextMenu
+        // Native WPF Modern ContextMenu with rounded edges and dropshadow
         _trayContextMenu = new ContextMenu
         {
             Placement = PlacementMode.MousePoint
@@ -180,8 +180,26 @@ public partial class MainWindow : Window
         _trayContextMenu.Items.Add(sep);
         _trayContextMenu.Items.Add(exitItem);
 
+        UpdateTrayMenuTheme();
+
         _notifyIcon.MouseUp += NotifyIcon_MouseUp;
         _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
+    }
+
+    private void UpdateTrayMenuTheme()
+    {
+        if (_trayContextMenu == null) return;
+
+        var theme = App.Config.GetValue("Settings", "Theme", "Light");
+        var dictUri = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase)
+            ? "Themes/DarkTheme.xaml"
+            : "Themes/LightTheme.xaml";
+
+        _trayContextMenu.Resources.MergedDictionaries.Clear();
+        _trayContextMenu.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri(dictUri, UriKind.Relative)
+        });
     }
 
     private void NotifyIcon_MouseUp(object? sender, WinForms.MouseEventArgs e)
@@ -537,6 +555,7 @@ public partial class MainWindow : Window
         var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
         ApplyTitleBarTheme();
+        UpdateTrayMenuTheme();
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
