@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -17,8 +18,10 @@ using FirewallConsole.Models;
 using FirewallConsole.Monitoring;
 using WinForms = System.Windows.Forms;
 using Application = System.Windows.Application;
+using ContextMenu = System.Windows.Controls.ContextMenu;
 using DataGrid = System.Windows.Controls.DataGrid;
 using DragEventArgs = System.Windows.DragEventArgs;
+using MenuItem = System.Windows.Controls.MenuItem;
 using MessageBox = System.Windows.MessageBox;
 
 namespace FirewallConsole;
@@ -31,8 +34,8 @@ public partial class MainWindow : Window
     private readonly BlockedConnectionMonitor _monitor = new();
     private bool _isWhitelistMode = true;
     private WinForms.NotifyIcon? _notifyIcon;
-    private WinForms.ContextMenuStrip? _trayMenu;
-    private WinForms.ToolStripMenuItem? _trayModeMenuItem;
+    private ContextMenu? _trayContextMenu;
+    private MenuItem? _trayModeMenuItem;
     private readonly DispatcherTimer _watchdogTimer = new();
     private bool _isClosingFromTray = false;
 
@@ -41,6 +44,9 @@ public partial class MainWindow : Window
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     public static void TrimWorkingSet()
     {
@@ -152,63 +158,50 @@ public partial class MainWindow : Window
             _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
         }
 
-        _trayMenu = new WinForms.ContextMenuStrip
+        // Native WPF Modern ContextMenu
+        _trayContextMenu = new ContextMenu
         {
-            Font = new System.Drawing.Font("Segoe UI", 9.5f),
-            ShowImageMargin = false,
-            ShowCheckMargin = false,
-            DropShadowEnabled = true,
-            Padding = new WinForms.Padding(4, 6, 4, 6),
-            RenderMode = WinForms.ToolStripRenderMode.Professional
+            Placement = PlacementMode.MousePoint
         };
 
-        var openItem = new WinForms.ToolStripMenuItem("Open Console")
-        {
-            Padding = new WinForms.Padding(14, 6, 14, 6),
-            Margin = new WinForms.Padding(0, 1, 0, 1)
-        };
+        var openItem = new MenuItem { Header = "Open Console" };
         openItem.Click += (s, e) => RestoreWindow();
 
-        _trayModeMenuItem = new WinForms.ToolStripMenuItem(GetModeText())
-        {
-            Padding = new WinForms.Padding(14, 6, 14, 6),
-            Margin = new WinForms.Padding(0, 1, 0, 1)
-        };
-        _trayModeMenuItem.Click += (s, e) => Dispatcher.Invoke(ToggleMode);
+        _trayModeMenuItem = new MenuItem { Header = GetModeText() };
+        _trayModeMenuItem.Click += (s, e) => ToggleMode();
 
-        var sep = new WinForms.ToolStripSeparator
-        {
-            Margin = new WinForms.Padding(0, 4, 0, 4)
-        };
+        var sep = new Separator();
 
-        var exitItem = new WinForms.ToolStripMenuItem("Exit")
-        {
-            Padding = new WinForms.Padding(14, 6, 14, 6),
-            Margin = new WinForms.Padding(0, 1, 0, 1)
-        };
-        exitItem.Click += (s, e) => Dispatcher.Invoke(ExitApp);
+        var exitItem = new MenuItem { Header = "Exit" };
+        exitItem.Click += (s, e) => ExitApp();
 
-        _trayMenu.Items.Add(openItem);
-        _trayMenu.Items.Add(_trayModeMenuItem);
-        _trayMenu.Items.Add(sep);
-        _trayMenu.Items.Add(exitItem);
+        _trayContextMenu.Items.Add(openItem);
+        _trayContextMenu.Items.Add(_trayModeMenuItem);
+        _trayContextMenu.Items.Add(sep);
+        _trayContextMenu.Items.Add(exitItem);
 
-        UpdateTrayMenuTheme();
-
-        _notifyIcon.ContextMenuStrip = _trayMenu;
+        _notifyIcon.MouseUp += NotifyIcon_MouseUp;
         _notifyIcon.DoubleClick += (s, e) => Dispatcher.Invoke(RestoreWindow);
+    }
+
+    private void NotifyIcon_MouseUp(object? sender, WinForms.MouseEventArgs e)
+    {
+        if (e.Button == WinForms.MouseButtons.Right && _trayContextMenu != null)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    SetForegroundWindow(hwnd);
+                }
+                _trayContextMenu.IsOpen = true;
+            });
+        }
     }
 
     private string GetModeText() =>
         _isWhitelistMode ? "Mode: Whitelist (Strict)" : "Mode: Blacklist (Permissive)";
-
-    private void UpdateTrayMenuTheme()
-    {
-        if (_trayMenu == null) return;
-        var theme = App.Config.GetValue("Settings", "Theme", "Light");
-        bool isDark = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
-        _trayMenu.Renderer = new ModernMenuRenderer(isDark);
-    }
 
     private void RestoreWindow()
     {
@@ -327,7 +320,7 @@ public partial class MainWindow : Window
         ModeToggleButton.Content = modeLabel;
         if (_trayModeMenuItem != null)
         {
-            _trayModeMenuItem.Text = modeLabel;
+            _trayModeMenuItem.Header = modeLabel;
         }
         if (_notifyIcon != null)
         {
@@ -544,7 +537,6 @@ public partial class MainWindow : Window
         var next = current.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
         App.SetTheme(next);
         ApplyTitleBarTheme();
-        UpdateTrayMenuTheme();
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
@@ -597,86 +589,5 @@ public partial class MainWindow : Window
         _isClosingFromTray = true;
         Close();
         Application.Current.Shutdown();
-    }
-}
-
-/// <summary>
-/// Modernized context menu renderer with smooth pill hover highlights, custom padding, and clean theme borders.
-/// </summary>
-public class ModernMenuRenderer : WinForms.ToolStripProfessionalRenderer
-{
-    private readonly bool _isDark;
-
-    public ModernMenuRenderer(bool isDark) : base(new CustomColorTable(isDark))
-    {
-        _isDark = isDark;
-    }
-
-    private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectangle(System.Drawing.Rectangle rect, int radius)
-    {
-        var path = new System.Drawing.Drawing2D.GraphicsPath();
-        int d = radius * 2;
-        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
-        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
-        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
-        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    protected override void OnRenderToolStripBackground(WinForms.ToolStripRenderEventArgs e)
-    {
-        var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
-        using var brush = new System.Drawing.SolidBrush(bgColor);
-        e.Graphics.FillRectangle(brush, e.AffectedBounds);
-    }
-
-    protected override void OnRenderToolStripBorder(WinForms.ToolStripRenderEventArgs e)
-    {
-        var borderColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(218, 222, 228);
-        using var pen = new System.Drawing.Pen(borderColor);
-        e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
-    }
-
-    protected override void OnRenderMenuItemBackground(WinForms.ToolStripItemRenderEventArgs e)
-    {
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        if (e.Item.Selected)
-        {
-            var hoverColor = _isDark ? System.Drawing.Color.FromArgb(46, 46, 54) : System.Drawing.Color.FromArgb(235, 237, 240);
-            using var brush = new System.Drawing.SolidBrush(hoverColor);
-            var pillRect = new System.Drawing.Rectangle(4, 2, e.Item.Width - 8, e.Item.Height - 4);
-            using var path = CreateRoundedRectangle(pillRect, 5);
-            g.FillPath(brush, path);
-        }
-    }
-
-    protected override void OnRenderItemText(WinForms.ToolStripItemTextRenderEventArgs e)
-    {
-        e.TextColor = _isDark ? System.Drawing.Color.FromArgb(244, 244, 246) : System.Drawing.Color.FromArgb(17, 24, 39);
-        base.OnRenderItemText(e);
-    }
-
-    protected override void OnRenderSeparator(WinForms.ToolStripSeparatorRenderEventArgs e)
-    {
-        var bgColor = _isDark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
-        using var bgBrush = new System.Drawing.SolidBrush(bgColor);
-        e.Graphics.FillRectangle(bgBrush, new System.Drawing.Rectangle(0, 0, e.Item.Width, e.Item.Height));
-
-        var sepColor = _isDark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(226, 230, 236);
-        using var pen = new System.Drawing.Pen(sepColor);
-        int y = e.Item.Height / 2;
-        e.Graphics.DrawLine(pen, 12, y, e.Item.Width - 12, y);
-    }
-
-    private class CustomColorTable : WinForms.ProfessionalColorTable
-    {
-        private readonly bool _dark;
-        public CustomColorTable(bool dark) => _dark = dark;
-
-        public override System.Drawing.Color ToolStripDropDownBackground => _dark ? System.Drawing.Color.FromArgb(30, 30, 34) : System.Drawing.Color.FromArgb(255, 255, 255);
-        public override System.Drawing.Color MenuBorder => _dark ? System.Drawing.Color.FromArgb(56, 56, 64) : System.Drawing.Color.FromArgb(218, 222, 228);
     }
 }
