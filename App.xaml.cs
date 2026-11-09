@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using FirewallConsole.Storage;
 using Application = System.Windows.Application;
@@ -10,10 +11,48 @@ namespace FirewallConsole;
 
 public partial class App : Application
 {
+    private const string MutexName = @"Global\FirewallConsole_SingleInstance_Mutex";
+    private const string EventName = @"Global\FirewallConsole_SingleInstance_Event";
+
+    private static Mutex? _singleInstanceMutex;
+    private static EventWaitHandle? _singleInstanceEvent;
+    private static RegisteredWaitHandle? _registeredWait;
+
     public static IniConfig Config { get; } = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Check for existing running instance
+        _singleInstanceMutex = new Mutex(true, MutexName, out bool isFirstInstance);
+
+        if (!isFirstInstance)
+        {
+            // Another instance is already running. Signal it to restore its window.
+            try
+            {
+                using var waitEvent = EventWaitHandle.OpenExisting(EventName);
+                waitEvent.Set();
+            }
+            catch { }
+
+            // Terminate duplicate process immediately
+            Environment.Exit(0);
+            return;
+        }
+
+        // Primary instance: listen for signals from subsequent launches
+        _singleInstanceEvent = new EventWaitHandle(false, EventResetMode.AutoReset, EventName);
+        _registeredWait = ThreadPool.RegisterWaitForSingleObject(_singleInstanceEvent, (state, timedOut) =>
+        {
+            Current.Dispatcher.Invoke(() =>
+            {
+                if (Current.MainWindow is MainWindow win)
+                {
+                    win.RestoreWindow();
+                }
+            });
+        }, null, -1, false);
+
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
             var ex = args.ExceptionObject as Exception;
@@ -66,5 +105,23 @@ public partial class App : Application
 
         Config.SetValue("Settings", "Theme", theme);
         Config.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firecon.ini"));
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _registeredWait?.Unregister(null);
+        _singleInstanceEvent?.Dispose();
+
+        if (_singleInstanceMutex != null)
+        {
+            try
+            {
+                _singleInstanceMutex.ReleaseMutex();
+            }
+            catch { }
+            _singleInstanceMutex.Dispose();
+        }
+
+        base.OnExit(e);
     }
 }
